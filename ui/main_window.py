@@ -282,6 +282,7 @@ class MainWindow(QMainWindow):
         
         data_group.setLayout(data_layout)
         layout.addWidget(data_group)
+
     
     def create_send_section(self, layout):
         """创建数据发送区域"""

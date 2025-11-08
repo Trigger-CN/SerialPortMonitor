@@ -25,29 +25,19 @@ class ComparisonTextDisplay(QWidget):
     def init_ui(self):
         """初始化UI"""
         layout = QHBoxLayout(self)
-        layout.setSpacing(5)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)  # 调整间距
+        layout.setContentsMargins(10, 10, 10, 10)  # 调整边距
         
         # 创建分割器
         self.splitter = QSplitter(Qt.Horizontal)
         
         # 文本显示区域
-        text_widget = QWidget()
-        text_layout = QVBoxLayout(text_widget)
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.addWidget(QLabel("📝 文本显示"))
         self.text_display = StyledLazyTextEdit()
-        self.text_display.setPlaceholderText("文本内容将显示在这里...")
-        text_layout.addWidget(self.text_display)
+        text_widget = self.create_display_widget("📝 文本显示", self.text_display)
         
         # 十六进制显示区域
-        hex_widget = QWidget()
-        hex_layout = QVBoxLayout(hex_widget)
-        hex_layout.setContentsMargins(0, 0, 0, 0)
-        hex_layout.addWidget(QLabel("🔢 十六进制显示"))
         self.hex_display = StyledLazyTextEdit()
-        self.hex_display.setPlaceholderText("十六进制内容将显示在这里...")
-        hex_layout.addWidget(self.hex_display)
+        hex_widget = self.create_display_widget("🔢 十六进制显示", self.hex_display)
         
         # 添加到分割器
         self.splitter.addWidget(text_widget)
@@ -58,15 +48,25 @@ class ComparisonTextDisplay(QWidget):
         
         layout.addWidget(self.splitter)
     
+    def create_display_widget(self, label_text, display_text):
+        """创建显示区域的部件"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(QLabel(label_text))
+        layout.addWidget(display_text)
+        return widget
+    
     def connect_scroll_bars(self):
         """连接滚动条实现同步滚动"""
         # 文本区域的垂直滚动条
         text_vbar = self.text_display.verticalScrollBar()
         hex_vbar = self.hex_display.verticalScrollBar()
         
-        # 连接滚动条信号
-        text_vbar.valueChanged.connect(hex_vbar.setValue)
-        hex_vbar.valueChanged.connect(text_vbar.setValue)
+        # 避免重复连接
+        if not text_vbar.signalsBlocked() and not hex_vbar.signalsBlocked():
+            text_vbar.valueChanged.connect(hex_vbar.setValue)
+            hex_vbar.valueChanged.connect(text_vbar.setValue)
     
     def set_total_chunks(self, total_chunks: int):
         """设置总块数"""
