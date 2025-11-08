@@ -2,7 +2,7 @@
 
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QApplication, QMessageBox, QWidget,
+                             QLabel, QApplication, QWidget,
                              QStackedWidget, QProgressBar)
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
@@ -134,12 +134,13 @@ class MainWindow(QMainWindow):
         
         # 主布局
         layout = QHBoxLayout(central_widget)
-        layout.setSpacing(10)
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)  # 调整间距
+        layout.setContentsMargins(10, 10, 10, 10)  # 调整边距
         
+        # 操作布局
         opetion_layout = QVBoxLayout()
         opetion_layout.setSpacing(10)
-        opetion_layout.setContentsMargins(15, 15, 15, 15)
+        opetion_layout.setContentsMargins(5, 5, 5, 5)  # 收窄边距
         layout.addLayout(opetion_layout)
 
         # 创建各个UI组件
@@ -157,7 +158,9 @@ class MainWindow(QMainWindow):
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
         log_path_group = StyledGroupBox("📜 日志路径")
-        log_path_layout = QHBoxLayout()
+        log_path_group.setFixedWidth(250)  # 设置固定宽度
+        
+        log_path_layout = QVBoxLayout()
         
         log_path_layout.addWidget(QLabel("路径:"))
         self.log_path_input = StyledLineEdit()
@@ -180,6 +183,8 @@ class MainWindow(QMainWindow):
     def create_serial_config_section(self, layout):
         """创建串口配置区域"""
         config_group = StyledGroupBox("串口配置")
+        config_group.setFixedWidth(250)  # 设置固定宽度
+        
         config_layout = QVBoxLayout()
         config_layout.setSpacing(10)
         
@@ -196,11 +201,22 @@ class MainWindow(QMainWindow):
         # 刷新串口按钮
         self.refresh_btn = StyledButton("🔄 刷新")
         config_layout.addWidget(self.refresh_btn)
+
+        self.timestamp = StyledCheckBox("⏰ 显示时间戳")
+        config_layout.addWidget(self.timestamp)
         
+        self.auto_scroll = StyledCheckBox("📜 自动滚动")
+        self.auto_scroll.setChecked(True)
+        self.auto_scroll.toggled.connect(self.on_auto_scroll_changed)
+        config_layout.addWidget(self.auto_scroll)
+
         # 打开/关闭串口按钮
         self.connect_btn = StyledButton("🔌 打开串口")
         config_layout.addWidget(self.connect_btn)
         
+        self.clear_btn = StyledButton("🗑️ 清空显示")
+        config_layout.addWidget(self.clear_btn)
+
         # 缓存控制按钮
         self.clear_cache_btn = StyledButton("🗑️ 清空缓存")
         config_layout.addWidget(self.clear_cache_btn)
@@ -282,15 +298,16 @@ class MainWindow(QMainWindow):
         
         data_group.setLayout(data_layout)
         layout.addWidget(data_group)
-
     
     def create_send_section(self, layout):
         """创建数据发送区域"""
         send_group = StyledGroupBox("📤 发送数据")
+        send_group.setFixedWidth(250)  # 设置固定宽度
+        
         send_layout = QVBoxLayout()
         
         # 发送输入区域
-        input_layout = QHBoxLayout()
+        input_layout = QVBoxLayout()
         self.send_input = StyledLineEdit()
         self.send_input.setPlaceholderText("输入要发送的数据... (回车发送)")
         input_layout.addWidget(self.send_input)
@@ -305,18 +322,9 @@ class MainWindow(QMainWindow):
         self.hex_send = StyledCheckBox("🔢 十六进制发送")
         option_layout.addWidget(self.hex_send)
         
-        self.timestamp = StyledCheckBox("⏰ 显示时间戳")
-        option_layout.addWidget(self.timestamp)
-        
-        self.auto_scroll = StyledCheckBox("📜 自动滚动")
-        self.auto_scroll.setChecked(True)
-        self.auto_scroll.toggled.connect(self.on_auto_scroll_changed)
-        option_layout.addWidget(self.auto_scroll)
-        
         option_layout.addStretch()
         
-        self.clear_btn = StyledButton("🗑️ 清空显示")
-        option_layout.addWidget(self.clear_btn)
+
         
         send_layout.addLayout(option_layout)
         send_group.setLayout(send_layout)
