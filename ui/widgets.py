@@ -25,8 +25,8 @@ class ComparisonTextDisplay(QWidget):
     def init_ui(self):
         """初始化UI"""
         layout = QHBoxLayout(self)
-        layout.setSpacing(10)  # 调整间距
-        layout.setContentsMargins(10, 10, 10, 10)  # 调整边距
+        layout.setSpacing(5)  # 调整间距
+        layout.setContentsMargins(0, 0, 0, 0)  # 调整边距
         
         # 创建分割器
         self.splitter = QSplitter(Qt.Horizontal)

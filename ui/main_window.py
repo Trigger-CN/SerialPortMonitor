@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         
         # 操作布局
         opetion_layout = QVBoxLayout()
-        opetion_layout.setSpacing(10)
+        opetion_layout.setSpacing(5)
         opetion_layout.setContentsMargins(5, 5, 5, 5)  # 收窄边距
         layout.addLayout(opetion_layout)
 
@@ -202,9 +202,11 @@ class MainWindow(QMainWindow):
         self.refresh_btn = StyledButton("🔄 刷新")
         config_layout.addWidget(self.refresh_btn)
 
+        # 时间戳显示
         self.timestamp = StyledCheckBox("⏰ 显示时间戳")
         config_layout.addWidget(self.timestamp)
         
+        # 自动滚动
         self.auto_scroll = StyledCheckBox("📜 自动滚动")
         self.auto_scroll.setChecked(True)
         self.auto_scroll.toggled.connect(self.on_auto_scroll_changed)
@@ -214,6 +216,7 @@ class MainWindow(QMainWindow):
         self.connect_btn = StyledButton("🔌 打开串口")
         config_layout.addWidget(self.connect_btn)
         
+        # 清空显示按钮
         self.clear_btn = StyledButton("🗑️ 清空显示")
         config_layout.addWidget(self.clear_btn)
 
@@ -323,8 +326,6 @@ class MainWindow(QMainWindow):
         option_layout.addWidget(self.hex_send)
         
         option_layout.addStretch()
-        
-
         
         send_layout.addLayout(option_layout)
         send_group.setLayout(send_layout)
