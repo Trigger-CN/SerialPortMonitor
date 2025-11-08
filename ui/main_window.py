@@ -3,7 +3,7 @@
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, 
                              QLabel, QApplication, QWidget,
-                             QStackedWidget, QProgressBar)
+                             QStackedWidget, QProgressBar, QMessageBox)
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
                        StyledTextEdit, StyledLineEdit, StyledCheckBox, 
