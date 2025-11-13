@@ -1,7 +1,7 @@
 # main_window.py
 
 import sys
-from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, 
+from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
                              QLabel, QApplication, QWidget,
                              QStackedWidget, QProgressBar, QMessageBox)
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex
@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         """初始化用户界面"""
-        self.setWindowTitle("🔧 跨平台串口监看工具 - VSCode风格 + 懒加载")
+        self.setWindowTitle("🔧串口监看工具 by Trigger-CN")
         self.setGeometry(100, 100, 1000, 800)
         
         # 设置窗口样式
@@ -356,7 +356,7 @@ class MainWindow(QMainWindow):
         # 串口管理器信号连接
         self.serial_manager.data_received.connect(self.on_data_received)
         self.serial_manager.connection_changed.connect(self.on_connection_changed)
-        self.serial_manager.error_occurred.connect(self.on_error_occurred)
+        self.serial_manager.error_occurred.connect(self.error_occurred)
     
     def load_config(self):
         """加载配置文件"""
@@ -582,8 +582,8 @@ class MainWindow(QMainWindow):
             self.display_stack.setCurrentIndex(0)
         elif mode == "hex":
             self.display_normal.setChecked(False)
+            self.display_hex.setChecked(True)
             self.display_comparison.setChecked(False)
-            self.display_mode = "hex"
             self.display_stack.setCurrentIndex(0)
         elif mode == "comparison":
             self.display_normal.setChecked(False)
@@ -695,7 +695,22 @@ class MainWindow(QMainWindow):
     
     def read_serial_data(self):
         """读取串口数据"""
-        self.serial_manager.read_data()
+        try:
+            data = self.serial_manager.read_data()
+            if data:
+                self.data_processor.process_received_data(data, 
+                                                          self.display_mode == "hex",
+                                                          self.timestamp.isChecked())
+        except Exception as e:
+            self.error_occurred(e)
+    
+    def error_occurred(self, error_msg):
+        """处理错误信息"""
+        self.status_label.setText(f"❌ {error_msg}")
+        self.status_label.setStyleSheet(f"color: {VSCodeTheme.RED};")
+        QMessageBox.critical(self, "错误", error_msg)
+        # 断开串口连接以防止重复错误提示
+        self.disconnect_serial()
     
     def on_data_received(self, data):
         """处理接收到的数据"""
@@ -801,12 +816,6 @@ class MainWindow(QMainWindow):
             self.port_combo.setEnabled(True)
             self.baud_combo.setEnabled(True)
             self.status_label.setText("🔌 已断开连接")
-    
-    def on_error_occurred(self, error_msg):
-        """处理错误信息"""
-        self.status_label.setText(f"❌ {error_msg}")
-        self.status_label.setStyleSheet(f"color: {VSCodeTheme.RED};")
-        QMessageBox.critical(self, "错误", error_msg)
     
     def closeEvent(self, event):
         """关闭事件处理"""

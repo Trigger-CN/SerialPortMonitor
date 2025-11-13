@@ -1,3 +1,5 @@
+# serial_manager.py
+
 import serial
 from PyQt5.QtCore import QObject, pyqtSignal
 from typing import Optional
@@ -76,6 +78,8 @@ class SerialManager(QObject):
                 return data
         except Exception as e:
             self.error_occurred.emit(f"读取错误: {str(e)}")
+            # 在读取错误时断开串口连接
+            self.disconnect_serial()
         
         return b""
     
