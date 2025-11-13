@@ -138,22 +138,27 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)  # 调整边距
         
         # 操作布局
-        opetion_layout = QVBoxLayout()
-        opetion_layout.setSpacing(5)
-        opetion_layout.setContentsMargins(5, 5, 5, 5)  # 收窄边距
-        layout.addLayout(opetion_layout)
-
+        option_layout = QVBoxLayout()
+        option_layout.setSpacing(5)
+        option_layout.setContentsMargins(5, 5, 5, 5)  # 收窄边距
+        layout.addLayout(option_layout)
         # 创建各个UI组件
-        self.create_serial_config_section(opetion_layout)
+        self.create_serial_config_section(option_layout)
         # 添加文件保存路径设置
-        self.create_log_path_section(opetion_layout)
-        self.create_send_section(opetion_layout)
+        self.create_log_path_section(option_layout)
+        self.create_send_section(option_layout)
         self.create_data_display_section(layout)
         self.create_status_bar()
         
         # 初始化定时器用于读取串口数据
         self.receive_timer = QTimer()
         self.receive_timer.timeout.connect(self.read_serial_data)
+        # 初始化显示模式
+        self.display_mode = "normal"  # 默认设置为普通模式
+        self.display_normal.setChecked(True)
+        self.display_hex.setChecked(False)
+        self.display_comparison.setChecked(False)
+        self.display_stack.setCurrentIndex(0)
 
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
@@ -258,16 +263,15 @@ class MainWindow(QMainWindow):
         mode_layout.addWidget(QLabel("显示模式:"))
         
         self.display_normal = StyledCheckBox("📄 普通模式")
-        self.display_normal.setChecked(True)
-        self.display_normal.toggled.connect(lambda: self.on_display_mode_changed("normal"))
+        self.display_normal.toggled.connect(lambda checked: self.on_display_mode_changed("normal"))
         mode_layout.addWidget(self.display_normal)
         
         self.display_hex = StyledCheckBox("🔢 十六进制模式")
-        self.display_hex.toggled.connect(lambda: self.on_display_mode_changed("hex"))
+        self.display_hex.toggled.connect(lambda checked: self.on_display_mode_changed("hex"))
         mode_layout.addWidget(self.display_hex)
         
         self.display_comparison = StyledCheckBox("📊 对照模式")
-        self.display_comparison.toggled.connect(lambda: self.on_display_mode_changed("comparison"))
+        self.display_comparison.toggled.connect(lambda checked: self.on_display_mode_changed("comparison"))
         mode_layout.addWidget(self.display_comparison)
         
         # 懒加载选项
@@ -573,31 +577,41 @@ class MainWindow(QMainWindow):
         """显示模式改变时的处理"""
         if self.is_closing:
             return
-            
-        # 确保只有一个模式被选中
+        
+        # 断开信号连接
+        self.display_normal.toggled.disconnect()
+        self.display_hex.toggled.disconnect()
+        self.display_comparison.toggled.disconnect()
+        
+        # 设置显示模式和按钮状态
         if mode == "normal":
+            self.display_normal.setChecked(True)
             self.display_hex.setChecked(False)
             self.display_comparison.setChecked(False)
             self.display_mode = "normal"
             self.display_stack.setCurrentIndex(0)
         elif mode == "hex":
-            self.display_normal.setChecked(False)
             self.display_hex.setChecked(True)
+            self.display_normal.setChecked(False)
             self.display_comparison.setChecked(False)
+            self.display_mode = "hex"
             self.display_stack.setCurrentIndex(0)
         elif mode == "comparison":
+            self.display_comparison.setChecked(True)
             self.display_normal.setChecked(False)
             self.display_hex.setChecked(False)
             self.display_mode = "comparison"
             self.display_stack.setCurrentIndex(1)
         
-        # 重置懒加载状态
-        self.initial_chunks_loaded = False
+        # 重新连接信号
+        self.display_normal.toggled.connect(lambda checked: self.on_display_mode_changed("normal"))
+        self.display_hex.toggled.connect(lambda checked: self.on_display_mode_changed("hex"))
+        self.display_comparison.toggled.connect(lambda checked: self.on_display_mode_changed("comparison"))
         
         # 刷新显示
         self.refresh_display()
-        
         self.status_label.setText(f"📊 显示模式: {self.get_display_mode_name(mode)}")
+
     
     def on_auto_scroll_changed(self, enabled: bool):
         """自动滚动设置改变时的处理"""
