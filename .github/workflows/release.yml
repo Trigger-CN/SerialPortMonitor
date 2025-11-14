@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     branches:
-      - master
+      - main
   release:
     types: [created]
 
@@ -31,55 +31,74 @@ jobs:
         pip install pyqt5 pyserial pyinstaller
         echo "安装依赖完成"
 
-    - name: 构建可执行文件
+    - name: 构建可执行文件 (Windows)
+      if: matrix.os == 'windows-latest'
       run: |
-        echo "构建可执行文件开始"
-        if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
-        elif [ "${{ matrix.os }}" == "macOS-latest" ]; then
-          pyinstaller --windowed --name=SerialMonitor main.py
-        else
-          pyinstaller --onefile --name=SerialMonitor main.py
-        fi
-        echo "构建可执行文件完成"
+        echo "构建 Windows 可执行文件开始"
+        pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
+        echo "构建 Windows 可执行文件完成"
 
-    - name: 收集构建产物
+    - name: 构建可执行文件 (macOS)
+      if: matrix.os == 'macOS-latest'
       run: |
-        echo "收集构建产物开始"
-        if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          mkdir -p dist_windows
-          mv dist/SerialMonitor.exe dist_windows/
-        elif [ "${{ matrix.os }}" == "macOS-latest" ]; then
-          mkdir -p dist_macos
-          mv dist/SerialMonitor.app dist_macos/
-        elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-          mkdir -p dist_linux
-          mv dist/SerialMonitor dist_linux/
-        fi
-        echo "收集构建产物完成"
+        echo "构建 macOS 可执行文件开始"
+        pyinstaller --windowed --name=SerialMonitor main.py
+        echo "构建 macOS 可执行文件完成"
 
-    - name: 验证构建产物
+    - name: 构建可执行文件 (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        echo "检查构建产物"
-        if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          ls -la dist_windows/
-          test -f dist_windows/SerialMonitor.exe && echo "✅ Windows 构建成功" || echo "❌ Windows 构建失败"
-        elif [ "${{ matrix.os }}" == "macOS-latest" ]; then
-          ls -la dist_macos/
-          test -d dist_macos/SerialMonitor.app && echo "✅ macOS 构建成功" || echo "❌ macOS 构建失败"
-        elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-          ls -la dist_linux/
-          test -f dist_linux/SerialMonitor && echo "✅ Linux 构建成功" || echo "❌ Linux 构建失败"
-        fi
+        echo "构建 Linux 可执行文件开始"
+        pyinstaller --onefile --name=SerialMonitor main.py
+        echo "构建 Linux 可执行文件完成"
+
+    - name: 重命名和组织构建产物 (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        mkdir dist_windows
+        move dist\SerialMonitor.exe dist_windows\
+        echo "Windows 构建产物已组织"
+
+    - name: 重命名和组织构建产物 (macOS)
+      if: matrix.os == 'macOS-latest'
+      run: |
+        mkdir dist_macos
+        mv dist/SerialMonitor.app dist_macos/
+        echo "macOS 构建产物已组织"
+
+    - name: 重命名和组织构建产物 (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        mkdir dist_linux
+        mv dist/SerialMonitor dist_linux/
+        echo "Linux 构建产物已组织"
+
+    - name: 验证构建产物 (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        dir dist_windows
+        if exist dist_windows\SerialMonitor.exe (echo "✅ Windows 构建成功") else (echo "❌ Windows 构建失败")
+
+    - name: 验证构建产物 (macOS)
+      if: matrix.os == 'macOS-latest'
+      run: |
+        ls -la dist_macos/
+        test -d dist_macos/SerialMonitor.app && echo "✅ macOS 构建成功" || echo "❌ macOS 构建失败"
+
+    - name: 验证构建产物 (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        ls -la dist_linux/
+        test -f dist_linux/SerialMonitor && echo "✅ Linux 构建成功" || echo "❌ Linux 构建失败"
 
     - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-${{ matrix.os }}
         path: |
-          ${{ matrix.os == 'windows-latest' && 'dist_windows/*' || '' }}
-          ${{ matrix.os == 'macOS-latest' && 'dist_macos/*' || '' }}
-          ${{ matrix.os == 'ubuntu-latest' && 'dist_linux/*' || '' }}
+          ${{ matrix.os == 'windows-latest' && 'dist_windows/' || '' }}
+          ${{ matrix.os == 'macOS-latest' && 'dist_macos/' || '' }}
+          ${{ matrix.os == 'ubuntu-latest' && 'dist_linux/' || '' }}
 
     - name: 发布到 GitHub Release
       if: github.event_name == 'release'
