@@ -1,9 +1,11 @@
-name: Release
+name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  release:
+    types: [created]
 
 jobs:
   build:
@@ -15,83 +17,76 @@ jobs:
 
     steps:
     - name: 检出代码
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: 设置Python版本
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
 
     - name: 安装依赖
       run: |
         echo "安装依赖开始"
-        set -x  # 启用 shell 调试
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
-        set +x  # 关闭 shell 调试
         echo "安装依赖完成"
 
     - name: 构建可执行文件
       run: |
         echo "构建可执行文件开始"
-        set -x  # 启用 shell 调试
         if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          pyinstaller --onefile --windowed --icon=img/serialmonitor.ico main.py
+          pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
+        elif [ "${{ matrix.os }}" == "macOS-latest" ]; then
+          pyinstaller --windowed --name=SerialMonitor main.py
         else
-          pyinstaller --onefile main.py
+          pyinstaller --onefile --name=SerialMonitor main.py
         fi
-        set +x  # 关闭 shell 调试
         echo "构建可执行文件完成"
 
     - name: 收集构建产物
       run: |
         echo "收集构建产物开始"
-        set -x  # 启用 shell 调试
         if [ "${{ matrix.os }}" == "windows-latest" ]; then
           mkdir -p dist_windows
-          mv dist/main.exe dist_windows/
-          echo "移动 main.exe 到 dist_windows"
+          mv dist/SerialMonitor.exe dist_windows/
         elif [ "${{ matrix.os }}" == "macOS-latest" ]; then
           mkdir -p dist_macos
-          mv dist/main dist_macos/
-          mv dist_macos/main dist_macos/main.app
-          echo "移动 main 到 dist_macos/main.app"
+          mv dist/SerialMonitor.app dist_macos/
         elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
           mkdir -p dist_linux
-          mv dist/main dist_linux/
-          echo "移动 main 到 dist_linux"
+          mv dist/SerialMonitor dist_linux/
         fi
-        set +x  # 关闭 shell 调试
         echo "收集构建产物完成"
 
-    - name: 检查构建产物是否存在
+    - name: 验证构建产物
       run: |
-        echo "检查构建产物是否存在开始"
+        echo "检查构建产物"
         if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          ls -l dist_windows/
-          test -f dist_windows/main.exe && echo "main.exe 存在" || echo "main.exe 不存在"
+          ls -la dist_windows/
+          test -f dist_windows/SerialMonitor.exe && echo "✅ Windows 构建成功" || echo "❌ Windows 构建失败"
         elif [ "${{ matrix.os }}" == "macOS-latest" ]; then
-          ls -l dist_macos/
-          test -f dist_macos/main.app && echo "main.app 存在" || echo "main.app 不存在"
+          ls -la dist_macos/
+          test -d dist_macos/SerialMonitor.app && echo "✅ macOS 构建成功" || echo "❌ macOS 构建失败"
         elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-          ls -l dist_linux/
-          test -f dist_linux/main && echo "main 存在" || echo "main 不存在"
+          ls -la dist_linux/
+          test -f dist_linux/SerialMonitor && echo "✅ Linux 构建成功" || echo "❌ Linux 构建失败"
         fi
-        echo "检查构建产物是否存在完成"
 
-    - name: 上传构建产物为构建产物
-      uses: actions/upload-artifact@v3
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.os }}-build-artifact
-        path: ${{ matrix.os == 'windows-latest' && './dist_windows/main.exe' || matrix.os == 'macOS-latest' && './dist_macos/main.app' || './dist_linux/main' }}
+        name: SerialMonitor-${{ matrix.os }}
+        path: |
+          ${{ matrix.os == 'windows-latest' && 'dist_windows/*' || '' }}
+          ${{ matrix.os == 'macOS-latest' && 'dist_macos/*' || '' }}
+          ${{ matrix.os == 'ubuntu-latest' && 'dist_linux/*' || '' }}
 
-    - name: 发布构建产物
-      id: upload-release-asset
+    - name: 发布到 GitHub Release
+      if: github.event_name == 'release'
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ${{ matrix.os == 'windows-latest' && './dist_windows/main.exe' || matrix.os == 'macOS-latest' && './dist_macos/main.app' || './dist_linux/main' }}
-        asset_name: main_${{ matrix.os }}_${{ matrix.os == 'windows-latest' && 'exe' || matrix.os == 'macOS-latest' && 'app' || 'bin' }}
-        asset_content_type: ${{ matrix.os == 'windows-latest' && 'application/x-msdownload' || matrix.os == 'macOS-latest' && 'application/x-macosx-app' || 'application/octet-stream' }}
+        asset_path: ${{ matrix.os == 'windows-latest' && 'dist_windows/SerialMonitor.exe' || matrix.os == 'macOS-latest' && 'dist_macos/SerialMonitor.app' || 'dist_linux/SerialMonitor' }}
+        asset_name: SerialMonitor_${{ matrix.os }}${{ matrix.os == 'windows-latest' && '.exe' || matrix.os == 'macOS-latest' && '.app' || '' }}
