@@ -25,14 +25,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-Windows
-        path: dist/
-    - name: Upload to Release
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: dist/SerialMonitor.exe
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        path: dist/SerialMonitor.exe
 
   build-macos:
     runs-on: macos-latest
@@ -52,14 +45,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-macOS
-        path: dist/
-    - name: Upload to Release
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: dist/SerialMonitor.app
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        path: dist/SerialMonitor.app
 
   build-linux:
     runs-on: ubuntu-latest
@@ -79,11 +65,37 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-Linux
-        path: dist/
-    - name: Upload to Release
-      if: github.event_name == 'release'
+        path: dist/SerialMonitor
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: List downloaded files
+      run: ls -R
+      
+    - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: dist/SerialMonitor
+        files: |
+          SerialMonitor-Windows/SerialMonitor.exe
+          SerialMonitor-macOS/SerialMonitor.app
+          SerialMonitor-Linux/SerialMonitor
+        tag_name: ${{ github.ref }}
+        name: Release ${{ github.ref_name }}
+        body: |
+          Automated build for ${{ github.ref_name }}
+          
+          **Build includes:**
+          - Windows: SerialMonitor.exe
+          - macOS: SerialMonitor.app  
+          - Linux: SerialMonitor
+          
+          Built from commit: ${{ github.sha }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
