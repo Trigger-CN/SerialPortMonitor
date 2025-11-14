@@ -7,54 +7,83 @@ on:
     types: [created]
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-        python-version: [3.8]
-
+  build-windows:
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
-
+        python-version: '3.8'
     - name: Install dependencies
       run: |
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
-
-    - name: Build with PyInstaller
+    - name: Build Windows executable
       run: |
-        if [ "$RUNNER_OS" = "Windows" ]; then
-          pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
-        elif [ "$RUNNER_OS" = "macOS" ]; then
-          pyinstaller --windowed --name=SerialMonitor main.py
-        else
-          pyinstaller --onefile --name=SerialMonitor main.py
-        fi
-
-    - name: List build artifacts
-      run: ls -la dist/
-
+        pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: SerialMonitor-${{ runner.os }}
+        name: SerialMonitor-Windows
         path: dist/
-        retention-days: 30
-
-    - name: Upload to GitHub Release
+    - name: Upload to Release
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          dist/*
-        tag_name: ${{ github.ref }}
-        name: Release ${{ github.ref_name }}
-        body: Automated build for ${{ runner.os }}
+        files: dist/SerialMonitor.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install pyqt5 pyserial pyinstaller
+    - name: Build macOS app
+      run: |
+        pyinstaller --windowed --name=SerialMonitor main.py
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SerialMonitor-macOS
+        path: dist/
+    - name: Upload to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/SerialMonitor.app
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install pyqt5 pyserial pyinstaller
+    - name: Build Linux binary
+      run: |
+        pyinstaller --onefile --name=SerialMonitor main.py
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SerialMonitor-Linux
+        path: dist/
+    - name: Upload to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/SerialMonitor
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
