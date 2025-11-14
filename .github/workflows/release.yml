@@ -2,7 +2,7 @@ name: Build and Release
 
 on:
   push:
-    branches: master
+    branches: [master]
   release:
     types: [created]
 
@@ -21,7 +21,7 @@ jobs:
     - name: Build Windows executable
       run: |
         pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
-    - name: Upload artifact
+    - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-Windows
@@ -41,11 +41,17 @@ jobs:
     - name: Build macOS app
       run: |
         pyinstaller --windowed --name=SerialMonitor main.py
-    - name: Upload artifact
+    - name: Create macOS zip package
+      run: |
+        cd dist
+        zip -r SerialMonitor-macOS.zip SerialMonitor.app
+        echo "macOS zip package created"
+        ls -la
+    - name: Upload macOS artifact
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-macOS
-        path: dist/SerialMonitor.app
+        path: dist/SerialMonitor-macOS.zip
 
   build-linux:
     runs-on: ubuntu-latest
@@ -61,7 +67,7 @@ jobs:
     - name: Build Linux binary
       run: |
         pyinstaller --onefile --name=SerialMonitor main.py
-    - name: Upload artifact
+    - name: Upload Linux artifact
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-Linux
@@ -76,26 +82,61 @@ jobs:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       
-    - name: List downloaded files
-      run: ls -R
+    - name: List downloaded files and set permissions
+      run: |
+        echo "=== 下载的文件结构 ==="
+        find . -type f -name "*" | sort
+        echo ""
+        echo "=== 各平台构建产物 ==="
+        echo "Windows:"
+        ls -la SerialMonitor-Windows/ || echo "Windows 目录不存在"
+        echo ""
+        echo "macOS:"
+        ls -la SerialMonitor-macOS/ || echo "macOS 目录不存在"
+        echo ""
+        echo "Linux:"
+        ls -la SerialMonitor-Linux/ || echo "Linux 目录不存在"
+        
+        # 为 Linux 可执行文件添加执行权限
+        if [ -f "SerialMonitor-Linux/SerialMonitor" ]; then
+          echo "为 Linux 可执行文件添加执行权限"
+          chmod +x SerialMonitor-Linux/SerialMonitor
+        fi
       
-    - name: Create Release
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
           SerialMonitor-Windows/SerialMonitor.exe
-          SerialMonitor-macOS/SerialMonitor.app
+          SerialMonitor-macOS/SerialMonitor-macOS.zip
           SerialMonitor-Linux/SerialMonitor
-        tag_name: ${{ github.ref }}
+        tag_name: ${{ github.ref_name }}
         name: Release ${{ github.ref_name }}
         body: |
-          Automated build for ${{ github.ref_name }}
+          # Serial Monitor ${{ github.ref_name }}
           
-          **Build includes:**
-          - Windows: SerialMonitor.exe
-          - macOS: SerialMonitor.app  
-          - Linux: SerialMonitor
+          **跨平台串口监控工具**
           
-          Built from commit: ${{ github.sha }}
+          ## 下载
+          - **Windows**: `SerialMonitor.exe` - 双击即可运行
+          - **macOS**: `SerialMonitor-macOS.zip` - 解压后运行 SerialMonitor.app
+          - **Linux**: `SerialMonitor` - 可能需要执行权限: `chmod +x SerialMonitor`
+          
+          ## 构建信息
+          - **构建时间**: ${{ fromJSON(github.event.head_commit).timestamp || github.event.head_commit.timestamp }}
+          - **提交版本**: ${{ github.sha }}
+          - **触发事件**: ${{ github.event_name }}
+          
+          ## 使用说明
+          1. 下载对应平台的版本
+          2. 运行程序
+          3. 选择串口设备和配置参数
+          4. 开始监控串口数据
+          
+          > 注意: 首次运行可能需要系统权限访问串口设备
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        make_latest: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
