@@ -95,10 +95,3 @@ jobs:
         asset_path: ${{ matrix.os == 'windows-latest' && './dist_windows/main.exe' || matrix.os == 'macOS-latest' && './dist_macos/main.app' || './dist_linux/main' }}
         asset_name: main_${{ matrix.os }}_${{ matrix.os == 'windows-latest' && 'exe' || matrix.os == 'macOS-latest' && 'app' || 'bin' }}
         asset_content_type: ${{ matrix.os == 'windows-latest' && 'application/x-msdownload' || matrix.os == 'macOS-latest' && 'application/x-macosx-app' || 'application/octet-stream' }}
-      run: |
-        echo "发布构建产物开始"
-        echo "Upload URL: ${{ github.event.release.upload_url }}"
-        echo "Asset Path: ${{ matrix.os == 'windows-latest' && './dist_windows/main.exe' || matrix.os == 'macOS-latest' && './dist_macos/main.app' || './dist_linux/main' }}"
-        echo "Asset Name: main_${{ matrix.os }}_${{ matrix.os == 'windows-latest' && 'exe' || matrix.os == 'macOS-latest' && 'app' || 'bin' }}"
-        echo "Asset Content Type: ${{ matrix.os == 'windows-latest' && 'application/x-msdownload' || matrix.os == 'macOS-latest' && 'application/x-macosx-app' || 'application/octet-stream' }}"
-        echo "发布构建产物完成"
