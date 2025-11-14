@@ -2,8 +2,7 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - master
+    branches: master
   release:
     types: [created]
 
@@ -12,115 +11,50 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macOS-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
         python-version: [3.8]
 
     steps:
-    - name: 检出代码
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: 设置Python版本
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: 安装依赖
+    - name: Install dependencies
       run: |
-        echo "安装依赖开始"
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
-        echo "安装依赖完成"
 
-    - name: 构建可执行文件 (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: cmd
+    - name: Build with PyInstaller
       run: |
-        echo "构建 Windows 可执行文件开始"
-        pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
-        echo "构建 Windows 可执行文件完成"
-
-    - name: 构建可执行文件 (macOS)
-      if: matrix.os == 'macOS-latest'
-      run: |
-        echo "构建 macOS 可执行文件开始"
-        pyinstaller --windowed --name=SerialMonitor main.py
-        echo "构建 macOS 可执行文件完成"
-
-    - name: 构建可执行文件 (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        echo "构建 Linux 可执行文件开始"
-        pyinstaller --onefile --name=SerialMonitor main.py
-        echo "构建 Linux 可执行文件完成"
-
-    - name: 重命名和组织构建产物 (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        mkdir dist_windows
-        move dist\SerialMonitor.exe dist_windows\
-        echo "Windows 构建产物已组织"
-
-    - name: 重命名和组织构建产物 (macOS)
-      if: matrix.os == 'macOS-latest'
-      run: |
-        mkdir dist_macos
-        mv dist/SerialMonitor.app dist_macos/
-        echo "macOS 构建产物已组织"
-
-    - name: 重命名和组织构建产物 (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        mkdir dist_linux
-        mv dist/SerialMonitor dist_linux/
-        echo "Linux 构建产物已组织"
-
-    - name: 验证构建产物 (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        dir dist_windows
-        if exist dist_windows\SerialMonitor.exe (
-          echo "✅ Windows 构建成功"
-        ) else (
-          echo "❌ Windows 构建失败"
-        )
-
-    - name: 验证构建产物 (macOS)
-      if: matrix.os == 'macOS-latest'
-      run: |
-        ls -la dist_macos/
-        if [ -d "dist_macos/SerialMonitor.app" ]; then
-          echo "✅ macOS 构建成功"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
+        elif [ "$RUNNER_OS" = "macOS" ]; then
+          pyinstaller --windowed --name=SerialMonitor main.py
         else
-          echo "❌ macOS 构建失败"
+          pyinstaller --onefile --name=SerialMonitor main.py
         fi
 
-    - name: 验证构建产物 (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        ls -la dist_linux/
-        if [ -f "dist_linux/SerialMonitor" ]; then
-          echo "✅ Linux 构建成功"
-        else
-          echo "❌ Linux 构建失败"
-        fi
+    - name: List build artifacts
+      run: ls -la dist/
 
-    - name: 上传构建产物
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: SerialMonitor-${{ matrix.os }}
-        path: |
-          ${{ matrix.os == 'windows-latest' && 'dist_windows/' || '' }}
-          ${{ matrix.os == 'macOS-latest' && 'dist_macos/' || '' }}
-          ${{ matrix.os == 'ubuntu-latest' && 'dist_linux/' || '' }}
+        name: SerialMonitor-${{ runner.os }}
+        path: dist/
+        retention-days: 30
 
-    - name: 发布到 GitHub Release
+    - name: Upload to GitHub Release
       if: github.event_name == 'release'
-      uses: actions/upload-release-asset@v1
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/*
+        tag_name: ${{ github.ref }}
+        name: Release ${{ github.ref_name }}
+        body: Automated build for ${{ runner.os }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ${{ matrix.os == 'windows-latest' && 'dist_windows/SerialMonitor.exe' || matrix.os == 'macOS-latest' && 'dist_macos/SerialMonitor.app' || 'dist_linux/SerialMonitor' }}
-        asset_name: SerialMonitor_${{ matrix.os }}${{ matrix.os == 'windows-latest' && '.exe' || matrix.os == 'macOS-latest' && '.app' || '' }}
