@@ -33,6 +33,7 @@ jobs:
 
     - name: 构建可执行文件 (Windows)
       if: matrix.os == 'windows-latest'
+      shell: cmd
       run: |
         echo "构建 Windows 可执行文件开始"
         pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
@@ -54,6 +55,7 @@ jobs:
 
     - name: 重命名和组织构建产物 (Windows)
       if: matrix.os == 'windows-latest'
+      shell: cmd
       run: |
         mkdir dist_windows
         move dist\SerialMonitor.exe dist_windows\
@@ -75,21 +77,34 @@ jobs:
 
     - name: 验证构建产物 (Windows)
       if: matrix.os == 'windows-latest'
+      shell: cmd
       run: |
         dir dist_windows
-        if exist dist_windows\SerialMonitor.exe (echo "✅ Windows 构建成功") else (echo "❌ Windows 构建失败")
+        if exist dist_windows\SerialMonitor.exe (
+          echo "✅ Windows 构建成功"
+        ) else (
+          echo "❌ Windows 构建失败"
+        )
 
     - name: 验证构建产物 (macOS)
       if: matrix.os == 'macOS-latest'
       run: |
         ls -la dist_macos/
-        test -d dist_macos/SerialMonitor.app && echo "✅ macOS 构建成功" || echo "❌ macOS 构建失败"
+        if [ -d "dist_macos/SerialMonitor.app" ]; then
+          echo "✅ macOS 构建成功"
+        else
+          echo "❌ macOS 构建失败"
+        fi
 
     - name: 验证构建产物 (Linux)
       if: matrix.os == 'ubuntu-latest'
       run: |
         ls -la dist_linux/
-        test -f dist_linux/SerialMonitor && echo "✅ Linux 构建成功" || echo "❌ Linux 构建失败"
+        if [ -f "dist_linux/SerialMonitor" ]; then
+          echo "✅ Linux 构建成功"
+        else
+          echo "❌ Linux 构建失败"
+        fi
 
     - name: 上传构建产物
       uses: actions/upload-artifact@v4
