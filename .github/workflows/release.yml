@@ -123,7 +123,7 @@ jobs:
           - **Linux**: `SerialMonitor` - 可能需要执行权限: `chmod +x SerialMonitor`
           
           ## 构建信息
-          - **构建时间**: ${{ fromJSON(github.event.head_commit).timestamp || github.event.head_commit.timestamp }}
+          - **构建时间**: ${{ github.event.head_commit.timestamp }}
           - **提交版本**: ${{ github.sha }}
           - **触发事件**: ${{ github.event_name }}
           
