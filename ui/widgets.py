@@ -300,6 +300,24 @@ class StyledButton(QPushButton):
                 background-color: #d32f2f;
             }}
         """)
+    def set_checked_style(self):
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {VSCodeTheme.GREEN};
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 8px 16px;
+                font-weight: bold;
+                min-width: 80px;
+            }}
+            QPushButton:hover {{
+                background-color: {VSCodeTheme.GREEN_HOVER};
+            }}
+            QPushButton:pressed {{
+                background-color: {VSCodeTheme.GREEN_DARK};
+            }}
+        """)
 
 class StyledTextEdit(QTextEdit):
     def __init__(self, parent=None):

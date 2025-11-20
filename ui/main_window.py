@@ -252,54 +252,48 @@ class MainWindow(QMainWindow):
         config_layout.setSpacing(10)
         
         # 串口选择
-        self.com_label = QLabel("📡 串口:")
+        self.com_label = QLabel("📡串口:")
         config_layout.addWidget(self.com_label)
         self.port_combo = StyledComboBox()
         config_layout.addWidget(self.port_combo)
         
         # 波特率选择
-        self.baud_label = QLabel("⚡ 波特率:")
+        self.baud_label = QLabel("⚡波特率:")
         config_layout.addWidget(self.baud_label)
         self.baud_combo = CustomBaudrateComboBox()
         config_layout.addWidget(self.baud_combo)
         
         # 刷新串口按钮
-        self.refresh_btn = StyledButton("🔄 刷新")
+        self.refresh_btn = StyledButton("🔄刷新")
         config_layout.addWidget(self.refresh_btn)
 
+        # 打开/关闭串口按钮
+        self.connect_btn = StyledButton("🔌打开串口")
+        config_layout.addWidget(self.connect_btn)
+
+        config_layout.addStretch()
+        config_layout.addWidget(QLabel("显示配置:"))
         # 时间戳显示
-        self.timestamp = StyledCheckBox("⏰ 显示时间戳")
+        self.timestamp = StyledButton("⏰显示时间戳")
+        self.timestamp.setCheckable(True)
+        self.timestamp.toggled.connect(self.on_timestamp_changed)
         config_layout.addWidget(self.timestamp)
         
         # 自动滚动
-        self.auto_scroll = StyledCheckBox("📜 自动滚动")
-        self.auto_scroll.setChecked(True)
+        self.auto_scroll = StyledButton("📜自动滚动")
+        self.auto_scroll.setCheckable(True)
         self.auto_scroll.toggled.connect(self.on_auto_scroll_changed)
         config_layout.addWidget(self.auto_scroll)
-
-        # 打开/关闭串口按钮
-        self.connect_btn = StyledButton("🔌 打开串口")
-        config_layout.addWidget(self.connect_btn)
         
         # 清空显示按钮
-        self.clear_btn = StyledButton("🗑️ 清空显示")
+        self.clear_btn = StyledButton("🗑️清空显示")
         config_layout.addWidget(self.clear_btn)
 
         # 缓存控制按钮
-        self.clear_cache_btn = StyledButton("🗑️ 清空缓存")
+        self.clear_cache_btn = StyledButton("🗑️清空缓存")
         config_layout.addWidget(self.clear_cache_btn)
-        
-        config_layout.addStretch()
-        config_group.setLayout(config_layout)
-        layout.addWidget(config_group)
-    
-    def create_data_display_section(self, layout):
-        """创建数据显示区域"""
-        data_group = StyledGroupBox("📊 数据监视")
-        data_layout = QVBoxLayout()
-        
         # 统计信息栏
-        stats_layout = QHBoxLayout()
+        stats_layout = QVBoxLayout()
         self.stats_label = QLabel("📨 接收: 0 字节 | 📤 发送: 0 字节")
         self.stats_label.setStyleSheet(f"color: {VSCodeTheme.GREEN}; font-weight: bold;")
         stats_layout.addWidget(self.stats_label)
@@ -316,32 +310,39 @@ class MainWindow(QMainWindow):
         stats_layout.addWidget(self.progress_bar)
         
         stats_layout.addStretch()
-        data_layout.addLayout(stats_layout)
         
         # 显示模式选择
-        mode_layout = QHBoxLayout()
-        mode_layout.addWidget(QLabel("显示模式:"))
-        
-        self.display_normal = StyledCheckBox("📄 普通模式")
+        mode_layout = QVBoxLayout()
+
+        self.display_normal = StyledCheckBox("📄普通模式")
         self.display_normal.toggled.connect(lambda checked: self.on_display_mode_changed("normal"))
         mode_layout.addWidget(self.display_normal)
         
-        self.display_hex = StyledCheckBox("🔢 十六进制模式")
+        self.display_hex = StyledCheckBox("🔢十六进制模式")
         self.display_hex.toggled.connect(lambda checked: self.on_display_mode_changed("hex"))
         mode_layout.addWidget(self.display_hex)
         
-        self.display_comparison = StyledCheckBox("📊 对照模式")
+        self.display_comparison = StyledCheckBox("📊对照模式")
         self.display_comparison.toggled.connect(lambda checked: self.on_display_mode_changed("comparison"))
         mode_layout.addWidget(self.display_comparison)
         
         # 懒加载选项
-        self.lazy_loading_check = StyledCheckBox("🚀 懒加载模式")
+        self.lazy_loading_check = StyledCheckBox("🚀懒加载模式")
         self.lazy_loading_check.setChecked(True)
-        self.lazy_loading_check.setToolTip("启用懒加载以提高大数据量时的显示性能")
         mode_layout.addWidget(self.lazy_loading_check)
         
         mode_layout.addStretch()
-        data_layout.addLayout(mode_layout)
+        config_layout.addLayout(mode_layout)
+        config_layout.addLayout(stats_layout)
+
+
+        config_group.setLayout(config_layout)
+        layout.addWidget(config_group)
+    
+    def create_data_display_section(self, layout):
+        """创建数据显示区域"""
+        data_group = StyledGroupBox("📊数据监视")
+        data_layout = QVBoxLayout()
         
         # 数据展示区域
         self.display_stack = QStackedWidget()
@@ -368,7 +369,7 @@ class MainWindow(QMainWindow):
     
     def create_send_section(self, layout):
         """创建数据发送区域"""
-        send_group = StyledGroupBox("📤 发送数据")
+        send_group = StyledGroupBox("📤发送数据")
         send_group.setFixedWidth(250)  # 设置固定宽度
         
         send_layout = QVBoxLayout()
@@ -379,14 +380,14 @@ class MainWindow(QMainWindow):
         self.send_input.setPlaceholderText("输入要发送的数据... (回车发送)")
         input_layout.addWidget(self.send_input)
         
-        self.send_btn = StyledButton("🚀 发送")
+        self.send_btn = StyledButton("🚀发送")
         input_layout.addWidget(self.send_btn)
         send_layout.addLayout(input_layout)
         
         # 选项区域
         option_layout = QHBoxLayout()
         
-        self.hex_send = StyledCheckBox("🔢 十六进制发送")
+        self.hex_send = StyledCheckBox("🔢十六进制发送")
         option_layout.addWidget(self.hex_send)
         
         option_layout.addStretch()
@@ -397,7 +398,7 @@ class MainWindow(QMainWindow):
     
     def create_status_bar(self):
         """创建状态栏"""
-        self.status_label = QLabel("✅ 就绪 - 选择串口并点击打开连接")
+        self.status_label = QLabel("✅就绪 - 选择串口并点击打开连接")
         self.status_label.setStyleSheet(f"color: {VSCodeTheme.GREEN};")
         self.statusBar().addWidget(self.status_label)
     
@@ -697,12 +698,21 @@ class MainWindow(QMainWindow):
         self.refresh_display()
         self.status_label.setText(f"📊 显示模式: {self.get_display_mode_name(mode)}")
 
-    
+    def on_timestamp_changed(self, enabled: bool):
+        """时间戳显示设置改变时的处理"""
+        if self.timestamp.isChecked():
+            self.timestamp.set_checked_style()
+        else:
+            self.timestamp.set_default_style()
+
     def on_auto_scroll_changed(self, enabled: bool):
         """自动滚动设置改变时的处理"""
         # 如果启用自动滚动，滚动到底部
-        if enabled:
+        if self.auto_scroll.isChecked():
+            self.auto_scroll.set_checked_style()
             self.scroll_to_bottom()
+        else:
+            self.auto_scroll.set_default_style()
     
     def scroll_to_bottom(self):
         """滚动到底部"""
