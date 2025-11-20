@@ -17,20 +17,36 @@ class SerialManager(QObject):
         self.serial_port: Optional[serial.Serial] = None
         self.is_connected = False
         
-    def connect_serial(self, port: str, baudrate: int = 115200, 
-                      bytesize: int = serial.EIGHTBITS,
-                      parity: str = serial.PARITY_NONE,
-                      stopbits: float = serial.STOPBITS_ONE,
-                      timeout: float = 0.1) -> bool:
+        # 串口配置
+        self.bytesize = serial.EIGHTBITS
+        self.parity = serial.PARITY_NONE
+        self.stopbits = serial.STOPBITS_ONE
+        
+    def connect_serial(self, port, baudrate, data_bits, stop_bits, parity):
         """连接串口"""
         try:
+            bytesize = {
+                '7': serial.SEVENBITS,
+                '8': serial.EIGHTBITS
+            }[data_bits]
+            stopbits = {
+                '1': serial.STOPBITS_ONE,
+                '1.5': serial.STOPBITS_ONE_POINT_FIVE,
+                '2': serial.STOPBITS_TWO
+            }[stop_bits]
+            parity = {
+                '无': serial.PARITY_NONE,
+                '奇': serial.PARITY_ODD,
+                '偶': serial.PARITY_EVEN
+            }[parity]
+
             self.serial_port = serial.Serial(
                 port=port,
                 baudrate=baudrate,
                 bytesize=bytesize,
                 parity=parity,
                 stopbits=stopbits,
-                timeout=timeout
+                timeout=1
             )
             
             if self.serial_port.is_open:

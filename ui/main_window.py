@@ -16,6 +16,7 @@ from styles.vs_code_theme import VSCodeTheme
 from utils.file_handler import FileHandler
 from utils.config_handler import ConfigHandler  # 导入ConfigHandler类
 from PyQt5.QtWidgets import QFileDialog
+from ui.preference_window import PreferenceWindow
 
 class LazyDisplayUpdateWorker(QThread):
     """懒加载显示更新工作线程"""
@@ -116,7 +117,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.init_connections()
         self.refresh_ports()
-        
+        self.prefs_window = PreferenceWindow(self)
         # 加载配置
         self.load_config()
     
@@ -142,6 +143,7 @@ class MainWindow(QMainWindow):
         option_layout.setSpacing(5)
         option_layout.setContentsMargins(5, 5, 5, 5)  # 收窄边距
         layout.addLayout(option_layout)
+        
         # 创建各个UI组件
         self.create_serial_config_section(option_layout)
         # 添加文件保存路径设置
@@ -149,6 +151,7 @@ class MainWindow(QMainWindow):
         self.create_send_section(option_layout)
         self.create_data_display_section(layout)
         self.create_status_bar()
+        self.create_prefs_button(option_layout)
         
         # 初始化定时器用于读取串口数据
         self.receive_timer = QTimer()
@@ -159,6 +162,59 @@ class MainWindow(QMainWindow):
         self.display_hex.setChecked(False)
         self.display_comparison.setChecked(False)
         self.display_stack.setCurrentIndex(0)
+    
+    def create_prefs_button(self, layout):
+        """创建首选项按钮"""
+        self.prefs_btn = StyledButton("🔧 设置首选项")
+        self.prefs_btn.clicked.connect(self.show_preference_window)
+        layout.addWidget(self.prefs_btn)
+    
+    def show_preference_window(self):
+        """显示首选项窗口"""
+        self.prefs_window.load_config()
+        self.prefs_window.show()
+    
+    def apply_log_preferences(self):
+        """应用日志显示首选项设置"""
+        font_size = self.prefs_window.font_size_input.text() or 10
+        font_color = self.prefs_window.font_color_input.text() or VSCodeTheme.FOREGROUND
+        
+        font = self.normal_display.font()
+        font.setPointSize(int(font_size))
+        self.normal_display.setFont(font)
+        self.normal_display.setStyleSheet(f"color: {font_color};")
+        
+        if self.display_mode == "comparison":
+            self.comparison_display.text_display.setFont(font)
+            self.comparison_display.text_display.setStyleSheet(f"color: {font_color};")
+            self.comparison_display.hex_display.setFont(font)
+            self.comparison_display.hex_display.setStyleSheet(f"color: {font_color};")
+
+    def create_prefs_button(self, layout):
+        """创建首选项按钮"""
+        self.prefs_btn = StyledButton("🔧 设置首选项")
+        self.prefs_btn.clicked.connect(self.show_preference_window)
+        layout.addWidget(self.prefs_btn)
+    
+    def show_preference_window(self):
+        """显示首选项窗口"""
+        self.prefs_window.show()
+    
+    def apply_log_preferences(self):
+        """应用日志显示首选项设置"""
+        font_size = self.prefs_window.font_size_input.text() or 10
+        font_color = self.prefs_window.font_color_input.text() or VSCodeTheme.FOREGROUND
+        
+        font = self.normal_display.font()
+        font.setPointSize(int(font_size))
+        self.normal_display.setFont(font)
+        self.normal_display.setStyleSheet(f"color: {font_color};")
+        
+        if self.display_mode == "comparison":
+            self.comparison_display.text_display.setFont(font)
+            self.comparison_display.text_display.setStyleSheet(f"color: {font_color};")
+            self.comparison_display.hex_display.setFont(font)
+            self.comparison_display.hex_display.setStyleSheet(f"color: {font_color};")
 
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
@@ -409,6 +465,26 @@ class MainWindow(QMainWindow):
             # 设置日志路径
             if 'log_path' in config:
                 self.log_path_input.setText(config['log_path'])
+            
+            # 设置数据位
+            if 'data_bits' in config:
+                self.prefs_window.data_bits_combo.setCurrentText(str(config['data_bits']))
+            
+            # 设置停止位
+            if 'stop_bits' in config:
+                self.prefs_window.stop_bits_combo.setCurrentText(config['stop_bits'])
+            
+            # 设置校验位
+            if 'parity' in config:
+                self.prefs_window.parity_combo.setCurrentText(config['parity'])
+            
+            # 设置字体大小
+            if 'font_size' in config:
+                self.prefs_window.font_size_input.setText(str(config['font_size']))
+            
+            # 设置字体颜色
+            if 'font_color' in config:
+                self.prefs_window.font_color_input.setText(config['font_color'])
         
         except Exception as e:
             self.status_label.setText(f"❌ 加载配置失败: {str(e)}")
@@ -423,7 +499,12 @@ class MainWindow(QMainWindow):
             'lazy_loading': self.lazy_loading_check.isChecked(),
             'timestamp': self.timestamp.isChecked(),
             'auto_scroll': self.auto_scroll.isChecked(),
-            'log_path': self.log_path_input.text().strip()
+            'log_path': self.log_path_input.text().strip(),
+            'data_bits': int(self.prefs_window.data_bits_combo.currentText()),
+            'stop_bits': self.prefs_window.stop_bits_combo.currentText(),
+            'parity': self.prefs_window.parity_combo.currentText(),
+            'font_size': int(self.prefs_window.font_size_input.text()) if self.prefs_window.font_size_input.text() else 10,
+            'font_color': self.prefs_window.font_color_input.text() or VSCodeTheme.FOREGROUND
         }
         
         try:
@@ -675,9 +756,13 @@ class MainWindow(QMainWindow):
         
         # 使用自定义波特率控件的方法获取波特率
         baudrate = self.baud_combo.get_baudrate()
-        
-        if self.serial_manager.connect_serial(port, baudrate):
+        data_bits = self.prefs_window.data_bits_combo.currentText()
+        stop_bits = self.prefs_window.stop_bits_combo.currentText()
+        parity = self.prefs_window.parity_combo.currentText()
+
+        if self.serial_manager.connect_serial(port, baudrate, data_bits, stop_bits, parity):
             self.receive_timer.start(10)
+            self.apply_log_preferences()
     
     def disconnect_serial(self):
         """断开串口连接"""
