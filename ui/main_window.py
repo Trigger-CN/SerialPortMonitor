@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
                              QLabel, QApplication, QWidget,
                              QStackedWidget, QProgressBar, QMessageBox)
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex
+from PyQt5.QtGui import QFont
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
                        StyledTextEdit, StyledLineEdit, StyledCheckBox, 
                        StyledGroupBox, ComparisonTextDisplay, StyledLazyTextEdit)
@@ -124,7 +125,8 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """初始化用户界面"""
         self.setWindowTitle("🔧串口监看工具 by Trigger-CN")
-        self.setGeometry(100, 100, 1000, 800)
+        # self.setGeometry(100, 100, 1400, 1100)
+        self.resize(1400, 1100)
         
         # 设置窗口样式
         self.setStyleSheet(f"background-color: {VSCodeTheme.BACKGROUND}; color: {VSCodeTheme.FOREGROUND};")
@@ -250,12 +252,14 @@ class MainWindow(QMainWindow):
         config_layout.setSpacing(10)
         
         # 串口选择
-        config_layout.addWidget(QLabel("📡 串口:"))
+        self.com_label = QLabel("📡 串口:")
+        config_layout.addWidget(self.com_label)
         self.port_combo = StyledComboBox()
         config_layout.addWidget(self.port_combo)
         
         # 波特率选择
-        config_layout.addWidget(QLabel("⚡ 波特率:"))
+        self.baud_label = QLabel("⚡ 波特率:")
+        config_layout.addWidget(self.baud_label)
         self.baud_combo = CustomBaudrateComboBox()
         config_layout.addWidget(self.baud_combo)
         

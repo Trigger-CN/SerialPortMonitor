@@ -1,7 +1,7 @@
 # preference_window.py
 
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, 
-                             QHBoxLayout, QComboBox, QLineEdit, QCheckBox)
+                             QHBoxLayout, QMessageBox, QComboBox, QLineEdit, QCheckBox)
 from styles.vs_code_theme import VSCodeTheme
 from utils.config_handler import ConfigHandler
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
@@ -14,7 +14,7 @@ class PreferenceWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("🔧 设置首选项")
-        self.setGeometry(100, 100, 400, 300)
+        self.resize(400, 300)
         
         self.init_ui()
         self.load_config()

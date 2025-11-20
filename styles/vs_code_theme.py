@@ -20,7 +20,7 @@ class VSCodeTheme:
     BLUE = "#569CD6"
     
     # 字体
-    FONT_FAMILY = "Consolas, 'Courier New', monospace"
+    FONT_FAMILY = "Cascadia Code, '微软雅黑'"
     
     @staticmethod
     def apply_theme(app):
@@ -47,10 +47,12 @@ class VSCodeTheme:
         # 全局样式表
         app.setStyleSheet(f"""
             QMainWindow {{
+                font-family: {VSCodeTheme.FONT_FAMILY};
                 background-color: {VSCodeTheme.BACKGROUND};
                 color: {VSCodeTheme.FOREGROUND};
             }}
             QStatusBar {{
+                font-family: {VSCodeTheme.FONT_FAMILY};
                 background-color: {VSCodeTheme.BACKGROUND_LIGHT};
                 color: {VSCodeTheme.FOREGROUND};
                 border-top: 1px solid {VSCodeTheme.BACKGROUND_LIGHTER};

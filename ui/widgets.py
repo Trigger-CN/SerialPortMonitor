@@ -109,10 +109,10 @@ class ComparisonTextDisplay(QWidget):
         self.text_display.load_more_requested.connect(text_slot)
         self.hex_display.load_more_requested.connect(hex_slot)
 
-# 其他控件类保持不变...
 class StyledComboBox(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
         self.setStyleSheet(f"""
             QComboBox {{
                 background-color: {VSCodeTheme.BACKGROUND_LIGHT};
@@ -153,7 +153,8 @@ class CustomBaudrateComboBox(StyledComboBox):
         super().__init__(parent)
         self.setEditable(True)
         self.setInsertPolicy(QComboBox.NoInsert)
-        
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
+        self.lineEdit().setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
         # 常用波特率列表
         self.common_baudrates = [
             110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 
@@ -260,7 +261,7 @@ class StyledButton(QPushButton):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.set_default_style()
-        
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
     def set_default_style(self):
         self.setStyleSheet(f"""
             QPushButton {{
@@ -303,8 +304,7 @@ class StyledButton(QPushButton):
 class StyledTextEdit(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
-        font = QFont(VSCodeTheme.FONT_FAMILY, 10)
-        self.setFont(font)
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
         self.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {VSCodeTheme.BACKGROUND};
@@ -336,6 +336,7 @@ class StyledTextEdit(QTextEdit):
 class StyledLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
         self.setStyleSheet(f"""
             QLineEdit {{
                 background-color: {VSCodeTheme.BACKGROUND_LIGHT};
@@ -353,6 +354,7 @@ class StyledLineEdit(QLineEdit):
 class StyledCheckBox(QCheckBox):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
         self.setStyleSheet(f"""
             QCheckBox {{
                 color: {VSCodeTheme.FOREGROUND};
@@ -381,6 +383,7 @@ class StyledCheckBox(QCheckBox):
 class StyledGroupBox(QGroupBox):
     def __init__(self, title, parent=None):
         super().__init__(title, parent)
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
         self.setStyleSheet(f"""
             QGroupBox {{
                 color: {VSCodeTheme.FOREGROUND};

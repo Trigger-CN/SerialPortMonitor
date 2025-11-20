@@ -91,7 +91,7 @@ class LazyTextEdit(QTextEdit):
         
         # 启动延迟加载定时器（避免频繁加载）
         if not self.load_timer.isActive():
-            self.load_timer.start(100)  # 100ms后处理
+            self.load_timer.start(10)  # 100ms后处理
     
     def process_pending_loads(self):
         """处理待加载的块"""
