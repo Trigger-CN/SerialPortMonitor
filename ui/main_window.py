@@ -9,6 +9,7 @@ from PyQt5.QtGui import QFont
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
                        StyledTextEdit, StyledLineEdit, StyledCheckBox, 
                        StyledGroupBox, ComparisonTextDisplay, StyledLazyTextEdit)
+from ui.long_text_widget import HugeTextWidget, ViewMode
 from core.serial_manager import SerialManager
 from core.port_scanner import PortScanner
 from utils.data_processor import DataProcessor
@@ -35,60 +36,6 @@ class LazyDisplayUpdateWorker(QThread):
         self.data_processor = DataProcessor()
         self._is_running = True
         self.mutex = QMutex()
-    
-    def stop(self):
-        """停止线程"""
-        self.mutex.lock()
-        self._is_running = False
-        self.mutex.unlock()
-        self.quit()
-        self.wait(1000)
-    
-    def run(self):
-        """线程执行函数"""
-        try:
-            if not self._is_running:
-                return
-                
-            if self.display_mode == "comparison":
-                self.process_comparison_chunks()
-            else:
-                self.process_normal_chunks()
-                    
-        except Exception as e:
-            print(f"懒加载线程错误: {e}")
-        finally:
-            self.finished.emit()
-    
-    def process_normal_chunks(self):
-        """处理普通模式的懒加载块"""
-        chunks = list(DataProcessor.get_lazy_display_chunks(
-            self.data_cache, self.hex_display, self.show_timestamp
-        ))
-        
-        total_chunks = len(chunks)
-        for i, chunk in enumerate(chunks):
-            if not self._is_running:
-                return
-                
-            self.chunk_ready.emit(i, chunk)
-            progress = int((i + 1) / total_chunks * 100) if total_chunks > 0 else 100
-            self.progress_updated.emit(progress)
-    
-    def process_comparison_chunks(self):
-        """处理对照模式的懒加载块"""
-        chunks = list(DataProcessor.get_lazy_comparison_chunks(
-            self.data_cache, self.show_timestamp
-        ))
-        
-        total_chunks = len(chunks)
-        for i, (text_chunk, hex_chunk) in enumerate(chunks):
-            if not self._is_running:
-                return
-                
-            self.chunk_ready.emit(i, (text_chunk, hex_chunk))
-            progress = int((i + 1) / total_chunks * 100) if total_chunks > 0 else 100
-            self.progress_updated.emit(progress)
 
 class MainWindow(QMainWindow):
     """主窗口"""
@@ -162,7 +109,6 @@ class MainWindow(QMainWindow):
         self.display_mode = "normal"  # 默认设置为普通模式
         self.display_normal.setChecked(True)
         self.display_hex.setChecked(False)
-        self.display_comparison.setChecked(False)
         self.display_stack.setCurrentIndex(0)
     
     def create_prefs_button(self, layout):
@@ -185,12 +131,6 @@ class MainWindow(QMainWindow):
         font.setPointSize(int(font_size))
         self.normal_display.setFont(font)
         self.normal_display.setStyleSheet(f"color: {font_color};")
-        
-        if self.display_mode == "comparison":
-            self.comparison_display.text_display.setFont(font)
-            self.comparison_display.text_display.setStyleSheet(f"color: {font_color};")
-            self.comparison_display.hex_display.setFont(font)
-            self.comparison_display.hex_display.setStyleSheet(f"color: {font_color};")
 
     def create_prefs_button(self, layout):
         """创建首选项按钮"""
@@ -211,12 +151,6 @@ class MainWindow(QMainWindow):
         font.setPointSize(int(font_size))
         self.normal_display.setFont(font)
         self.normal_display.setStyleSheet(f"color: {font_color};")
-        
-        if self.display_mode == "comparison":
-            self.comparison_display.text_display.setFont(font)
-            self.comparison_display.text_display.setStyleSheet(f"color: {font_color};")
-            self.comparison_display.hex_display.setFont(font)
-            self.comparison_display.hex_display.setStyleSheet(f"color: {font_color};")
 
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
@@ -322,15 +256,6 @@ class MainWindow(QMainWindow):
         self.display_hex.toggled.connect(lambda checked: self.on_display_mode_changed("hex"))
         mode_layout.addWidget(self.display_hex)
         
-        self.display_comparison = StyledCheckBox("📊对照模式")
-        self.display_comparison.toggled.connect(lambda checked: self.on_display_mode_changed("comparison"))
-        mode_layout.addWidget(self.display_comparison)
-        
-        # 懒加载选项
-        self.lazy_loading_check = StyledCheckBox("🚀懒加载模式")
-        self.lazy_loading_check.setChecked(True)
-        mode_layout.addWidget(self.lazy_loading_check)
-        
         mode_layout.addStretch()
         config_layout.addLayout(mode_layout)
         config_layout.addLayout(stats_layout)
@@ -346,21 +271,12 @@ class MainWindow(QMainWindow):
         
         # 数据展示区域
         self.display_stack = QStackedWidget()
+                # Replace normal_display
+        self.normal_display = HugeTextWidget()
+        self.normal_display.set_view_mode(ViewMode.TEXT_ONLY)
         
-        # 普通/十六进制显示 - 使用懒加载文本框
-        self.normal_display = StyledLazyTextEdit()
-        self.normal_display.setPlaceholderText("串口数据将显示在这里...")
-        self.normal_display.load_more_requested.connect(self.on_normal_load_more)
-        
-        # 对照显示
-        self.comparison_display = ComparisonTextDisplay()
-        self.comparison_display.connect_load_signals(
-            self.on_comparison_load_more, self.on_comparison_load_more
-        )
-        
-        # 添加到堆叠窗口
+        # Add to the display stack
         self.display_stack.addWidget(self.normal_display)
-        self.display_stack.addWidget(self.comparison_display)
         
         data_layout.addWidget(self.display_stack)
         
@@ -442,23 +358,12 @@ class MainWindow(QMainWindow):
                 if self.display_mode == "normal":
                     self.display_normal.setChecked(True)
                     self.display_hex.setChecked(False)
-                    self.display_comparison.setChecked(False)
                     self.display_stack.setCurrentIndex(0)
                 elif self.display_mode == "hex":
                     self.display_normal.setChecked(False)
                     self.display_hex.setChecked(True)
-                    self.display_comparison.setChecked(False)
                     self.display_stack.setCurrentIndex(0)
-                elif self.display_mode == "comparison":
-                    self.display_normal.setChecked(False)
-                    self.display_hex.setChecked(False)
-                    self.display_comparison.setChecked(True)
-                    self.display_stack.setCurrentIndex(1)
-            
-            # 设置懒加载模式
-            if 'lazy_loading' in config:
-                self.lazy_loading_check.setChecked(config['lazy_loading'])
-            
+
             # 设置时间戳显示
             if 'timestamp' in config:
                 self.timestamp.setChecked(config['timestamp'])
@@ -501,7 +406,6 @@ class MainWindow(QMainWindow):
             'port': self.port_combo.currentText(),
             'baudrate': self.baud_combo.get_baudrate(),
             'display_mode': self.display_mode,
-            'lazy_loading': self.lazy_loading_check.isChecked(),
             'timestamp': self.timestamp.isChecked(),
             'auto_scroll': self.auto_scroll.isChecked(),
             'log_path': self.log_path_input.text().strip(),
@@ -525,85 +429,6 @@ class MainWindow(QMainWindow):
         
         self.start_lazy_loading(chunk_index)
     
-    def on_comparison_load_more(self, chunk_index: int):
-        """对照模式懒加载请求"""
-        if self.lazy_worker and self.lazy_worker.isRunning():
-            return
-        
-        self.start_lazy_loading(chunk_index)
-    
-    def start_lazy_loading(self, start_chunk: int = 0):
-        """启动懒加载"""
-        if self.is_closing:
-            return
-        
-        # 停止现有工作线程
-        if self.lazy_worker and self.lazy_worker.isRunning():
-            self.lazy_worker.stop()
-        
-        packet_count, total_bytes = self.data_cache.get_cache_info()
-        
-        # 小数据量直接加载，不启用懒加载
-        if total_bytes < 50000 and not self.initial_chunks_loaded:
-            self.refresh_display_direct()
-            return
-        
-        self.use_lazy_loading = self.lazy_loading_check.isChecked()
-        
-        if not self.use_lazy_loading:
-            self.refresh_display_direct()
-            return
-        
-        # 显示进度条
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
-        
-        # 创建并启动懒加载工作线程
-        self.lazy_worker = LazyDisplayUpdateWorker(
-            self.data_cache,
-            self.display_mode,
-            self.display_mode == "hex",
-            self.timestamp.isChecked()
-        )
-        self.lazy_worker.chunk_ready.connect(self.on_chunk_ready)
-        self.lazy_worker.progress_updated.connect(self.progress_bar.setValue)
-        self.lazy_worker.finished.connect(self.on_lazy_loading_finished)
-        self.lazy_worker.start()
-        
-        self.status_label.setText("🚀 懒加载中...")
-        self.initial_chunks_loaded = True
-    
-    def on_chunk_ready(self, chunk_index: int, content):
-        """块数据准备就绪"""
-        if self.is_closing:
-            return
-        
-        if self.display_mode == "comparison":
-            if isinstance(content, tuple) and len(content) == 2:
-                text_content, hex_content = content
-                self.comparison_display.append_chunk(text_content, hex_content, chunk_index)
-        else:
-            if isinstance(content, str):
-                self.normal_display.append_chunk(chunk_index, content)
-    
-    def on_lazy_loading_finished(self):
-        """懒加载完成"""
-        if self.is_closing:
-            return
-        
-        self.progress_bar.setVisible(False)
-        self.status_label.setText("✅ 懒加载完成")
-        
-        if self.auto_scroll.isChecked():
-            self.scroll_to_bottom()
-    
-    def refresh_display_direct(self):
-        """直接刷新显示（用于小数据量）"""
-        if self.display_mode == "comparison":
-            self.refresh_comparison_display()
-        else:
-            self.refresh_normal_display()
-    
     def refresh_normal_display(self):
         """刷新普通显示模式的内容"""
         display_text = self.data_processor.process_cached_data_for_normal(
@@ -613,19 +438,6 @@ class MainWindow(QMainWindow):
         )
         
         self.normal_display.setPlainText(display_text)
-        
-        if self.auto_scroll.isChecked():
-            self.scroll_to_bottom()
-    
-    def refresh_comparison_display(self):
-        """刷新对照显示模式的内容"""
-        text_display, hex_display = self.data_processor.process_cached_data_for_comparison(
-            self.data_cache,
-            self.timestamp.isChecked()
-        )
-        
-        self.comparison_display.clear()
-        self.comparison_display.append_text(text_display, hex_display)
         
         if self.auto_scroll.isChecked():
             self.scroll_to_bottom()
@@ -647,17 +459,8 @@ class MainWindow(QMainWindow):
         packet_count, total_bytes = self.data_cache.get_cache_info()
         
         # 清空显示
-        if self.display_mode == "comparison":
-            self.comparison_display.clear()
-        else:
-            self.normal_display.clear()
-        
-        # 小数据量直接加载
-        if total_bytes < 50000:
-            self.refresh_display_direct()
-        else:
-            # 大数据量使用懒加载
-            self.start_lazy_loading()
+        self.normal_display.clear()
+
     
     def on_display_mode_changed(self, mode: str):
         """显示模式改变时的处理"""
@@ -667,35 +470,25 @@ class MainWindow(QMainWindow):
         # 断开信号连接
         self.display_normal.toggled.disconnect()
         self.display_hex.toggled.disconnect()
-        self.display_comparison.toggled.disconnect()
         
         # 设置显示模式和按钮状态
         if mode == "normal":
             self.display_normal.setChecked(True)
             self.display_hex.setChecked(False)
-            self.display_comparison.setChecked(False)
             self.display_mode = "normal"
             self.display_stack.setCurrentIndex(0)
+            self.normal_display.set_view_mode(ViewMode.TEXT_ONLY)
         elif mode == "hex":
             self.display_hex.setChecked(True)
             self.display_normal.setChecked(False)
-            self.display_comparison.setChecked(False)
             self.display_mode = "hex"
             self.display_stack.setCurrentIndex(0)
-        elif mode == "comparison":
-            self.display_comparison.setChecked(True)
-            self.display_normal.setChecked(False)
-            self.display_hex.setChecked(False)
-            self.display_mode = "comparison"
-            self.display_stack.setCurrentIndex(1)
+            self.normal_display.set_view_mode(ViewMode.HEX_STREAM)
         
         # 重新连接信号
         self.display_normal.toggled.connect(lambda checked: self.on_display_mode_changed("normal"))
         self.display_hex.toggled.connect(lambda checked: self.on_display_mode_changed("hex"))
-        self.display_comparison.toggled.connect(lambda checked: self.on_display_mode_changed("comparison"))
-        
-        # 刷新显示
-        self.refresh_display()
+
         self.status_label.setText(f"📊 显示模式: {self.get_display_mode_name(mode)}")
 
     def on_timestamp_changed(self, enabled: bool):
@@ -716,18 +509,14 @@ class MainWindow(QMainWindow):
     
     def scroll_to_bottom(self):
         """滚动到底部"""
-        if self.display_mode == "comparison":
-            self.comparison_display.scroll_to_bottom()
-        else:
-            scrollbar = self.normal_display.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+        scrollbar = self.normal_display.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
     
     def get_display_mode_name(self, mode: str) -> str:
         """获取显示模式名称"""
         names = {
             "normal": "普通模式",
             "hex": "十六进制模式", 
-            "comparison": "文本/十六进制对照模式"
         }
         return names.get(mode, "未知模式")
     
@@ -782,14 +571,7 @@ class MainWindow(QMainWindow):
         """断开串口连接"""
         if self.serial_manager.get_connection_status():
             port_name = self.port_combo.currentData() or self.port_combo.currentText()
-            if self.display_mode == "comparison":
-                text_display, hex_display = self.data_processor.process_cached_data_for_comparison(
-                    self.data_cache,
-                    self.timestamp.isChecked()
-                )
-                log_data = f"{text_display}    {hex_display}"
-            else:
-                log_data = self.data_processor.process_cached_data_for_normal(
+            log_data = self.data_processor.process_cached_data_for_normal(
                     self.data_cache,
                     self.display_mode == "hex",
                     self.timestamp.isChecked()
@@ -812,7 +594,7 @@ class MainWindow(QMainWindow):
             data = self.serial_manager.read_data()
             if data:
                 self.data_processor.process_received_data(data, 
-                                                          self.display_mode == "hex",
+                                                          False,
                                                           self.timestamp.isChecked())
         except Exception as e:
             self.error_occurred(e)
@@ -829,45 +611,12 @@ class MainWindow(QMainWindow):
         """处理接收到的数据"""
         self.received_count += len(data)
         self.update_stats()
+        self.normal_display.append_bytes(data)
         
-        # 添加数据到缓存
-        self.data_cache.add_data(data)
-        
-        # 根据当前显示模式实时更新显示（只更新新数据，不重新处理整个缓存）
-        if self.display_mode == "comparison":
-            self.append_comparison_data(data)
-        else:
-            self.append_normal_data(data)
-        
-        # 如果启用了自动滚动，滚动到底部
-        if self.auto_scroll.isChecked():
-            self.scroll_to_bottom()
-    
-    def append_normal_data(self, data):
-        """追加数据到普通显示模式（实时更新，不处理整个缓存）"""
-        processed_data = self.data_processor.process_received_data(
-            data, 
-            self.display_mode == "hex",
-            self.timestamp.isChecked()
-        )
-        
-        cursor = self.normal_display.textCursor()
-        cursor.movePosition(cursor.End)
-        cursor.insertText(processed_data)
-    
-    def append_comparison_data(self, data):
-        """追加数据到对照显示模式（实时更新，不处理整个缓存）"""
-        # 分割数据为文本和十六进制行
-        text_lines, hex_lines = self.data_processor.split_data_for_comparison(data)
-        
-        # 格式化显示内容
-        text_display, hex_display = self.data_processor.format_comparison_display(
-            text_lines, hex_lines, self.timestamp.isChecked()
-        )
-        
-        # 追加到对照显示控件
-        self.comparison_display.append_text(text_display, hex_display)
-    
+        # # 如果启用了自动滚动，滚动到底部
+        # if self.auto_scroll.isChecked():
+        #     self.scroll_to_bottom()
+
     def send_data(self):
         """发送数据"""
         text = self.send_input.text()
@@ -896,10 +645,7 @@ class MainWindow(QMainWindow):
     
     def clear_display(self):
         """清空显示区域（但不清空缓存）"""
-        if self.display_mode == "comparison":
-            self.comparison_display.clear()
-        else:
-            self.normal_display.clear()
+        self.normal_display.clear()
     
     def clear_cache(self):
         """清空数据缓存"""
