@@ -503,9 +503,10 @@ class MainWindow(QMainWindow):
         # 如果启用自动滚动，滚动到底部
         if self.auto_scroll.isChecked():
             self.auto_scroll.set_checked_style()
-            self.scroll_to_bottom()
+            self.normal_display.set_auto_scroll(True)
         else:
             self.auto_scroll.set_default_style()
+            self.normal_display.set_auto_scroll(False)
     
     def scroll_to_bottom(self):
         """滚动到底部"""
@@ -611,7 +612,7 @@ class MainWindow(QMainWindow):
         """处理接收到的数据"""
         self.received_count += len(data)
         self.update_stats()
-        self.normal_display.append_bytes(data)
+        self.normal_display.append_raw_bytes(data)
         
         # # 如果启用了自动滚动，滚动到底部
         # if self.auto_scroll.isChecked():
