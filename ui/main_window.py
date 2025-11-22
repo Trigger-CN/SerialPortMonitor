@@ -445,6 +445,7 @@ class MainWindow(QMainWindow):
             self.timestamp.set_checked_style()
         else:
             self.timestamp.set_default_style()
+        self.normal_display.set_show_timestamp(self.timestamp.isChecked())
 
     def on_auto_scroll_changed(self, enabled: bool):
         """自动滚动设置改变时的处理"""
