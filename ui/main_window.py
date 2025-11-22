@@ -65,7 +65,6 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.init_connections()
         self.refresh_ports()
-        self.prefs_window = PreferenceWindow(self)
         # 加载配置
         self.load_config()
     
@@ -110,6 +109,7 @@ class MainWindow(QMainWindow):
         self.display_normal.setChecked(True)
         self.display_hex.setChecked(False)
         self.display_stack.setCurrentIndex(0)
+        self.prefs_window = PreferenceWindow(self)
     
     def create_prefs_button(self, layout):
         """创建首选项按钮"""
@@ -124,33 +124,15 @@ class MainWindow(QMainWindow):
     
     def apply_log_preferences(self):
         """应用日志显示首选项设置"""
-        font_size = self.prefs_window.font_size_input.text() or 10
-        font_color = self.prefs_window.font_color_input.text() or VSCodeTheme.FOREGROUND
-        
-        font = self.normal_display.font()
-        font.setPointSize(int(font_size))
-        self.normal_display.setFont(font)
-        self.normal_display.setStyleSheet(f"color: {font_color};")
+        font = self.prefs_window.font_combo.currentFont().family()
+        font_size = self.prefs_window.spin_size.value() or 10
+        font_color = self.prefs_window.text_color or VSCodeTheme.FOREGROUND
+        font_bg_color = self.prefs_window.bg_color or VSCodeTheme.BACKGROUND
 
-    def create_prefs_button(self, layout):
-        """创建首选项按钮"""
-        self.prefs_btn = StyledButton("🔧 设置首选项")
-        self.prefs_btn.clicked.connect(self.show_preference_window)
-        layout.addWidget(self.prefs_btn)
-    
-    def show_preference_window(self):
-        """显示首选项窗口"""
-        self.prefs_window.show()
-    
-    def apply_log_preferences(self):
-        """应用日志显示首选项设置"""
-        font_size = self.prefs_window.font_size_input.text() or 10
-        font_color = self.prefs_window.font_color_input.text() or VSCodeTheme.FOREGROUND
-        
-        font = self.normal_display.font()
-        font.setPointSize(int(font_size))
-        self.normal_display.setFont(font)
-        self.normal_display.setStyleSheet(f"color: {font_color};")
+        self.normal_display.set_font_size(font_size)
+        self.normal_display.set_font_family(font)
+        self.normal_display.set_text_color(font_color)
+        self.normal_display.set_bg_color(font_bg_color)
 
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
@@ -236,12 +218,6 @@ class MainWindow(QMainWindow):
         self.cache_label = QLabel("💾 缓存: 0 包, 0 字节")
         self.cache_label.setStyleSheet(f"color: {VSCodeTheme.BLUE}; font-weight: bold;")
         stats_layout.addWidget(self.cache_label)
-        
-        # 进度条
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.progress_bar.setMaximum(100)
-        stats_layout.addWidget(self.progress_bar)
         
         stats_layout.addStretch()
         
@@ -338,7 +314,7 @@ class MainWindow(QMainWindow):
         self.serial_manager.data_received.connect(self.on_data_received)
         self.serial_manager.connection_changed.connect(self.on_connection_changed)
         self.serial_manager.error_occurred.connect(self.error_occurred)
-    
+
     def load_config(self):
         """加载配置文件"""
         try:
@@ -388,14 +364,17 @@ class MainWindow(QMainWindow):
             if 'parity' in config:
                 self.prefs_window.parity_combo.setCurrentText(config['parity'])
             
-            # 设置字体大小
+            if 'font' in config:
+                self.prefs_window.set_font_str(config['font'])
             if 'font_size' in config:
-                self.prefs_window.font_size_input.setText(str(config['font_size']))
-            
-            # 设置字体颜色
+                self.prefs_window.spin_size.setValue(config['font_size'])
             if 'font_color' in config:
-                self.prefs_window.font_color_input.setText(config['font_color'])
-        
+                self.prefs_window.text_color = config['font_color']
+            if 'bg_color' in config:
+                self.prefs_window.bg_color = config['bg_color']
+
+            self.apply_log_preferences()
+
         except Exception as e:
             self.status_label.setText(f"❌ 加载配置失败: {str(e)}")
             QMessageBox.critical(self, "加载配置失败", str(e))
@@ -412,8 +391,10 @@ class MainWindow(QMainWindow):
             'data_bits': int(self.prefs_window.data_bits_combo.currentText()),
             'stop_bits': self.prefs_window.stop_bits_combo.currentText(),
             'parity': self.prefs_window.parity_combo.currentText(),
-            'font_size': int(self.prefs_window.font_size_input.text()) if self.prefs_window.font_size_input.text() else 10,
-            'font_color': self.prefs_window.font_color_input.text() or VSCodeTheme.FOREGROUND
+            'font': self.prefs_window.font_combo.currentFont().family(),
+            'font_size': int(self.prefs_window.spin_size.value()) if self.prefs_window.spin_size.value() else 10,
+            'font_color': self.prefs_window.text_color or VSCodeTheme.FOREGROUND,
+            'bg_color': self.prefs_window.bg_color or VSCodeTheme.BACKGROUND_LIGHT
         }
         
         try:
