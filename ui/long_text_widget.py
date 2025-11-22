@@ -357,7 +357,8 @@ class HugeTextWidget(QAbstractScrollArea):
         if self._auto_scroll or was_at_bottom:
             self.scroll_to_bottom()
         self.viewport().update()
-        
+        self._update_line_num_width()
+
     def clear(self):
         self._lines = []
         self._raw_bytes = b""
@@ -372,6 +373,55 @@ class HugeTextWidget(QAbstractScrollArea):
         self._update_scrollbars()
         self.viewport().update()
 
+    def goto_line(self, line_no):
+        """跳转到指定行"""
+        line_idx = line_no - 1
+        if 0 <= line_idx < len(self._lines):
+            self._current_line_index = line_idx
+            self.verticalScrollBar().setValue(line_idx)
+            self.viewport().update()
+            return True
+        return False
+
+    def find_text(self, query, start_from=0):
+        """简单的查找功能，返回找到的行号索引"""
+        for i in range(start_from, len(self._lines)):
+            if query in self._lines[i]:
+                self.goto_line(i + 1)
+                return i
+        return -1
+
+    def set_line_style(self, line_idx, color_hex=None, bg_hex=None):
+        """设置某行的样式（文本颜色，背景颜色）"""
+        if 0 <= line_idx < len(self._lines):
+            self._line_styles[line_idx] = (color_hex, bg_hex)
+            self.viewport().update()
+
+    def set_global_style(self, bg_color, text_color, font_size=10):
+        """自定义控件整体风格"""
+        self._bg_color = QColor(bg_color)
+        self._text_color = QColor(text_color)
+        self._font = QFont("Consolas", font_size)
+        self._font_metrics = QFontMetrics(self._font)
+        self._line_height = self._font_metrics.lineSpacing()
+        self._char_width = self._font_metrics.width('A')
+        
+        self.viewport().setStyleSheet(f"background-color: {self._bg_color.name()};")
+        self.setFont(self._font)
+        self._update_scrollbars()
+        self.viewport().update()
+
+    def scroll_to_bottom(self):
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+
+    def _update_line_num_width(self):
+        """根据行数动态调整行号区域宽度"""
+        digits = len(str(len(self._lines)))
+        self._line_num_area_width = 20 + (digits * 10)
+
+    # 返回缓存的数据
+    def get_cached_data(self):
+        return self._raw_bytes.decode(self._encoding, errors='replace')
 # ===========================
 # Demo: 包含外观控制的演示窗口
 # ===========================

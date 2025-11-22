@@ -53,9 +53,7 @@ class MainWindow(QMainWindow):
         
         # 显示模式
         self.display_mode = "normal"
-        
-        # 工作线程
-        self.lazy_worker = None
+
         self.is_closing = False
         
         # 懒加载相关
@@ -403,26 +401,6 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"❌ 保存配置失败: {str(e)}")
             QMessageBox.critical(self, "保存配置失败", str(e))
     
-    def on_normal_load_more(self, chunk_index: int):
-        """普通模式懒加载请求"""
-        if self.lazy_worker and self.lazy_worker.isRunning():
-            return
-        
-        self.start_lazy_loading(chunk_index)
-    
-    def refresh_normal_display(self):
-        """刷新普通显示模式的内容"""
-        display_text = self.data_processor.process_cached_data_for_normal(
-            self.data_cache,
-            self.display_mode == "hex",
-            self.timestamp.isChecked()
-        )
-        
-        self.normal_display.setPlainText(display_text)
-        
-        if self.auto_scroll.isChecked():
-            self.scroll_to_bottom()
-    
     def on_cache_updated(self):
         """缓存更新时的处理"""
         self.update_cache_info()
@@ -431,17 +409,6 @@ class MainWindow(QMainWindow):
         """更新缓存信息显示"""
         packet_count, total_bytes = self.data_cache.get_cache_info()
         self.cache_label.setText(f"💾 缓存: {packet_count} 包, {total_bytes} 字节")
-    
-    def refresh_display(self):
-        """刷新当前显示模式的内容"""
-        if self.is_closing:
-            return
-            
-        packet_count, total_bytes = self.data_cache.get_cache_info()
-        
-        # 清空显示
-        self.normal_display.clear()
-
     
     def on_display_mode_changed(self, mode: str):
         """显示模式改变时的处理"""
@@ -546,18 +513,14 @@ class MainWindow(QMainWindow):
         parity = self.prefs_window.parity_combo.currentText()
 
         if self.serial_manager.connect_serial(port, baudrate, data_bits, stop_bits, parity):
-            self.receive_timer.start(10)
+            self.receive_timer.start(1)
             self.apply_log_preferences()
     
     def disconnect_serial(self):
         """断开串口连接"""
         if self.serial_manager.get_connection_status():
             port_name = self.port_combo.currentData() or self.port_combo.currentText()
-            log_data = self.data_processor.process_cached_data_for_normal(
-                    self.data_cache,
-                    self.display_mode == "hex",
-                    self.timestamp.isChecked()
-                )
+            log_data = self.normal_display.get_cached_data()
             
             try:
                 log_path = self.log_path_input.text().strip()
@@ -661,10 +624,6 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """关闭事件处理"""
         self.is_closing = True
-        
-        # 停止工作线程
-        if self.lazy_worker and self.lazy_worker.isRunning():
-            self.lazy_worker.stop()
         
         # 断开串口连接
         self.disconnect_serial()
