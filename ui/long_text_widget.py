@@ -444,6 +444,10 @@ class HugeTextWidget(QAbstractScrollArea):
     # ===========================
     # 辅助与设置
     # ===========================
+    def set_encoding(self, encoding: str):
+        """设置字符编码"""
+        self._encoding = encoding.lower()
+
     def set_font_family(self, family: str):
         self._font.setFamily(family)
         self._update_metrics()

@@ -44,6 +44,12 @@ class PreferenceWindow(QDialog):
         self.parity_combo.addItems(["无", "奇", "偶"])
         serial_layout.addWidget(self.parity_combo)
         
+        serial_layout.addWidget(QLabel("字符编码:"))
+        self.encoding_combo = StyledComboBox()
+        self.encoding_combo.addItems(["UTF-8", "GBK", "GB2312", "ASCII", "Latin-1", "UTF-16", "UTF-32"])
+        self.encoding_combo.setCurrentText("UTF-8")
+        serial_layout.addWidget(self.encoding_combo)
+        
         serial_group.setLayout(serial_layout)
         layout.addWidget(serial_group)
         
@@ -104,6 +110,13 @@ class PreferenceWindow(QDialog):
                 self.stop_bits_combo.setCurrentText(str(config['stop_bits']))
             if 'parity' in config:
                 self.parity_combo.setCurrentText(config['parity'])
+            if 'encoding' in config:
+                encoding_text = config['encoding'].upper()
+                # 确保编码名称格式正确（UTF-8 而不是 utf-8）
+                if encoding_text in ["UTF-8", "GBK", "GB2312", "ASCII", "LATIN-1", "UTF-16", "UTF-32"]:
+                    if encoding_text == "LATIN-1":
+                        encoding_text = "Latin-1"
+                    self.encoding_combo.setCurrentText(encoding_text)
             if 'font' in config:
                 self.set_font_str(config['font'])
             if 'font_size' in config:
@@ -122,6 +135,7 @@ class PreferenceWindow(QDialog):
             'data_bits': int(self.data_bits_combo.currentText()),
             'stop_bits': self.stop_bits_combo.currentText(),
             'parity': self.parity_combo.currentText(),
+            'encoding': self.encoding_combo.currentText(),
             'font': self.font_combo.currentFont().family(),
             'font_size': int(self.spin_size.value()) if self.spin_size.value() else 10,
             'font_color': self.text_color or VSCodeTheme.FOREGROUND,

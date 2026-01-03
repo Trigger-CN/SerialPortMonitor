@@ -19,7 +19,7 @@ class FileHandler:
             log_full_path = os.path.join(os.getcwd(), log_filename)  # 默认保存在当前工作目录
         
         try:
-            with open(log_full_path, 'w') as log_file:
+            with open(log_full_path, 'w', encoding='utf-8') as log_file:
                 log_file.write(data)
             return log_full_path
         except Exception as e:

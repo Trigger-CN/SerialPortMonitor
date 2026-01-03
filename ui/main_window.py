@@ -126,11 +126,13 @@ class MainWindow(QMainWindow):
         font_size = self.prefs_window.spin_size.value() or 10
         font_color = self.prefs_window.text_color or VSCodeTheme.FOREGROUND
         font_bg_color = self.prefs_window.bg_color or VSCodeTheme.BACKGROUND
+        encoding = self.prefs_window.encoding_combo.currentText().lower()
 
         self.normal_display.set_font_size(font_size)
         self.normal_display.set_font_family(font)
         self.normal_display.set_text_color(font_color)
         self.normal_display.set_bg_color(font_bg_color)
+        self.normal_display.set_encoding(encoding)
 
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
@@ -370,6 +372,12 @@ class MainWindow(QMainWindow):
                 self.prefs_window.text_color = config['font_color']
             if 'bg_color' in config:
                 self.prefs_window.bg_color = config['bg_color']
+            if 'encoding' in config:
+                encoding_text = config['encoding'].upper()
+                if encoding_text in ["UTF-8", "GBK", "GB2312", "ASCII", "LATIN-1", "UTF-16", "UTF-32"]:
+                    if encoding_text == "LATIN-1":
+                        encoding_text = "Latin-1"
+                    self.prefs_window.encoding_combo.setCurrentText(encoding_text)
 
             self.apply_log_preferences()
 
@@ -389,6 +397,7 @@ class MainWindow(QMainWindow):
             'data_bits': int(self.prefs_window.data_bits_combo.currentText()),
             'stop_bits': self.prefs_window.stop_bits_combo.currentText(),
             'parity': self.prefs_window.parity_combo.currentText(),
+            'encoding': self.prefs_window.encoding_combo.currentText(),
             'font': self.prefs_window.font_combo.currentFont().family(),
             'font_size': int(self.prefs_window.spin_size.value()) if self.prefs_window.spin_size.value() else 10,
             'font_color': self.prefs_window.text_color or VSCodeTheme.FOREGROUND,

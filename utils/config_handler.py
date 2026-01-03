@@ -15,7 +15,7 @@ class ConfigHandler:
             return {}
         
         try:
-            with open(ConfigHandler.CONFIG_FILE, 'r') as config_file:
+            with open(ConfigHandler.CONFIG_FILE, 'r', encoding='utf-8') as config_file:
                 config = json.load(config_file)
             return config
         except Exception as e:
@@ -25,7 +25,7 @@ class ConfigHandler:
     def save_config(config: dict):
         """保存配置文件"""
         try:
-            with open(ConfigHandler.CONFIG_FILE, 'w') as config_file:
-                json.dump(config, config_file, indent=4)
+            with open(ConfigHandler.CONFIG_FILE, 'w', encoding='utf-8') as config_file:
+                json.dump(config, config_file, indent=4, ensure_ascii=False)
         except Exception as e:
             raise Exception(f"保存配置失败: {str(e)}")
