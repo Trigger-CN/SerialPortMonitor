@@ -14,27 +14,43 @@ jobs:
     - uses: actions/setup-python@v4
       with:
         python-version: '3.8'
+    - name: Set version
+      id: set_version
+      run: |
+        if ("${{ github.event_name }}" -eq "release") {
+          $version = "${{ github.ref_name }}"
+          if ($version.StartsWith("v")) {
+            $version = $version.Substring(1)
+          }
+        } else {
+          $sha = "${{ github.sha }}"
+          $version = "dev-$($sha.Substring(0, 12))"
+        }
+        echo "VERSION=$version" >> $env:GITHUB_ENV
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        Write-Host "Version set to: $version"
     - name: Install dependencies
       run: |
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
     - name: Update version info
-      if: github.event_name == 'release'
       run: |
-        $version = "${{ github.ref_name }}"
-        if ($version.StartsWith("v")) {
-          $version = $version.Substring(1)
-        }
+        $version = "$env:VERSION"
         (Get-Content version.py) -replace '__version__ = ".*"', "__version__ = `"$version`"" | Set-Content version.py
         Write-Host "Updated version to: $version"
     - name: Build Windows executable
       run: |
         pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
+    - name: Rename executable with version
+      run: |
+        $version = "$env:VERSION"
+        Move-Item -Path "dist\SerialMonitor.exe" -Destination "dist\SerialMonitor-v$version-Windows.exe"
+        Write-Host "Renamed to: SerialMonitor-v$version-Windows.exe"
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-Windows
-        path: dist/SerialMonitor.exe
+        path: dist/SerialMonitor-v${{ env.VERSION }}-Windows.exe
 
   build-macos:
     runs-on: macos-latest
@@ -43,17 +59,27 @@ jobs:
     - uses: actions/setup-python@v4
       with:
         python-version: '3.8'
+    - name: Set version
+      id: set_version
+      run: |
+        if [ "${{ github.event_name }}" == "release" ]; then
+          VERSION="${{ github.ref_name }}"
+          if [[ $VERSION == v* ]]; then
+            VERSION=${VERSION#v}
+          fi
+        else
+          VERSION="dev-${GITHUB_SHA:0:12}"
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version set to: $VERSION"
     - name: Install dependencies
       run: |
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
     - name: Update version info
-      if: github.event_name == 'release'
       run: |
-        VERSION="${{ github.ref_name }}"
-        if [[ $VERSION == v* ]]; then
-          VERSION=${VERSION#v}
-        fi
+        VERSION="${{ env.VERSION }}"
         sed -i '' "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" version.py
         echo "Updated version to: $VERSION"
     - name: Build macOS app
@@ -62,14 +88,15 @@ jobs:
     - name: Create macOS zip package
       run: |
         cd dist
-        zip -r SerialMonitor-macOS.zip SerialMonitor.app
-        echo "macOS zip package created"
+        VERSION="${{ env.VERSION }}"
+        zip -r "SerialMonitor-v${VERSION}-macOS.zip" SerialMonitor.app
+        echo "macOS zip package created: SerialMonitor-v${VERSION}-macOS.zip"
         ls -la
     - name: Upload macOS artifact
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-macOS
-        path: dist/SerialMonitor-macOS.zip
+        path: dist/SerialMonitor-v${{ env.VERSION }}-macOS.zip
 
   build-linux:
     runs-on: ubuntu-latest
@@ -78,27 +105,43 @@ jobs:
     - uses: actions/setup-python@v4
       with:
         python-version: '3.8'
+    - name: Set version
+      id: set_version
+      run: |
+        if [ "${{ github.event_name }}" == "release" ]; then
+          VERSION="${{ github.ref_name }}"
+          if [[ $VERSION == v* ]]; then
+            VERSION=${VERSION#v}
+          fi
+        else
+          VERSION="dev-${GITHUB_SHA:0:12}"
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version set to: $VERSION"
     - name: Install dependencies
       run: |
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
     - name: Update version info
-      if: github.event_name == 'release'
       run: |
-        VERSION="${{ github.ref_name }}"
-        if [[ $VERSION == v* ]]; then
-          VERSION=${VERSION#v}
-        fi
+        VERSION="${{ env.VERSION }}"
         sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" version.py
         echo "Updated version to: $VERSION"
     - name: Build Linux binary
       run: |
         pyinstaller --onefile --name=SerialMonitor main.py
+    - name: Rename binary with version
+      run: |
+        VERSION="${{ env.VERSION }}"
+        mv dist/SerialMonitor "dist/SerialMonitor-v${VERSION}-Linux"
+        chmod +x "dist/SerialMonitor-v${VERSION}-Linux"
+        echo "Renamed to: SerialMonitor-v${VERSION}-Linux"
     - name: Upload Linux artifact
       uses: actions/upload-artifact@v4
       with:
         name: SerialMonitor-Linux
-        path: dist/SerialMonitor
+        path: dist/SerialMonitor-v${{ env.VERSION }}-Linux
 
   create-release:
     needs: [build-windows, build-macos, build-linux]
@@ -109,6 +152,15 @@ jobs:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       
+    - name: Set version
+      run: |
+        VERSION="${{ github.ref_name }}"
+        if [[ $VERSION == v* ]]; then
+          VERSION=${VERSION#v}
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Version: $VERSION"
+    
     - name: List downloaded files and set permissions
       run: |
         echo "=== 下载的文件结构 ==="
@@ -125,18 +177,19 @@ jobs:
         ls -la SerialMonitor-Linux/ || echo "Linux 目录不存在"
         
         # 为 Linux 可执行文件添加执行权限
-        if [ -f "SerialMonitor-Linux/SerialMonitor" ]; then
+        VERSION="${{ env.VERSION }}"
+        if [ -f "SerialMonitor-Linux/SerialMonitor-v${VERSION}-Linux" ]; then
           echo "为 Linux 可执行文件添加执行权限"
-          chmod +x SerialMonitor-Linux/SerialMonitor
+          chmod +x "SerialMonitor-Linux/SerialMonitor-v${VERSION}-Linux"
         fi
       
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          SerialMonitor-Windows/SerialMonitor.exe
-          SerialMonitor-macOS/SerialMonitor-macOS.zip
-          SerialMonitor-Linux/SerialMonitor
+          SerialMonitor-Windows/SerialMonitor-v${{ env.VERSION }}-Windows.exe
+          SerialMonitor-macOS/SerialMonitor-v${{ env.VERSION }}-macOS.zip
+          SerialMonitor-Linux/SerialMonitor-v${{ env.VERSION }}-Linux
         tag_name: ${{ github.ref_name }}
         name: Release ${{ github.ref_name }}
         body: |
@@ -145,11 +198,12 @@ jobs:
           **跨平台串口监控工具**
           
           ## 下载
-          - **Windows**: `SerialMonitor.exe` - 双击即可运行
-          - **macOS**: `SerialMonitor-macOS.zip` - 解压后运行 SerialMonitor.app
-          - **Linux**: `SerialMonitor` - 可能需要执行权限: `chmod +x SerialMonitor`
+          - **Windows**: `SerialMonitor-v${{ env.VERSION }}-Windows.exe` - 双击即可运行
+          - **macOS**: `SerialMonitor-v${{ env.VERSION }}-macOS.zip` - 解压后运行 SerialMonitor.app
+          - **Linux**: `SerialMonitor-v${{ env.VERSION }}-Linux` - 可能需要执行权限: `chmod +x SerialMonitor-v${{ env.VERSION }}-Linux`
           
           ## 构建信息
+          - **版本**: ${{ env.VERSION }}
           - **构建时间**: ${{ github.event.head_commit.timestamp }}
           - **提交版本**: ${{ github.sha }}
           - **触发事件**: ${{ github.event_name }}
