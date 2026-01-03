@@ -245,13 +245,9 @@ class MainWindow(QMainWindow):
         self.highlight_btn.clicked.connect(self.open_highlight_config)
         config_layout.addWidget(self.highlight_btn)
         
-        # 清空显示按钮
-        self.clear_btn = StyledButton("🗑️清空显示")
+        # 清空按钮（合并了清空显示和清空缓存）
+        self.clear_btn = StyledButton("🗑️清空")
         config_layout.addWidget(self.clear_btn)
-
-        # 缓存控制按钮
-        self.clear_cache_btn = StyledButton("🗑️清空缓存")
-        config_layout.addWidget(self.clear_cache_btn)
         # 统计信息栏
         stats_layout = QVBoxLayout()
         self.stats_label = QLabel("📨 接收: 0 字节 | 📤 发送: 0 字节")
@@ -369,8 +365,7 @@ class MainWindow(QMainWindow):
         self.connect_btn.clicked.connect(self.toggle_serial)
         self.send_btn.clicked.connect(self.send_data)
         self.send_input.returnPressed.connect(self.send_data)
-        self.clear_btn.clicked.connect(self.clear_display)
-        self.clear_cache_btn.clicked.connect(self.clear_cache)
+        self.clear_btn.clicked.connect(self.clear_cache)
         
         # 波特率组合框信号连接
         self.baud_combo.custom_baudrate_selected.connect(self.on_baudrate_changed)
