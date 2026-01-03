@@ -1,6 +1,7 @@
 import sys
 import math
 import time
+import re
 from datetime import datetime
 from enum import Enum
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QAbstractScrollArea, 
@@ -38,6 +39,13 @@ class HugeTextWidget(QAbstractScrollArea):
         self._sel_start_pos = None 
         self._sel_end_pos = None   
         self._is_selecting = False
+        
+        # --- 高亮规则 ---
+        self._highlight_rules = []  # 存储高亮规则列表
+        
+        # --- 性能优化：换行结果缓存 ---
+        self._wrapped_lines_cache = {}  # 缓存换行结果: {(line_idx, available_width): wrapped_lines}
+        self._cached_available_width = None  # 缓存时的可用宽度
         
         # --- 样式定义 ---
         self._colors = {
@@ -82,6 +90,8 @@ class HugeTextWidget(QAbstractScrollArea):
 
     def _update_metrics(self):
         """重新计算布局尺寸"""
+        old_available_width = self._cached_available_width
+        
         self.setFont(self._font)
         self._font_metrics = QFontMetrics(self._font)
         self._line_height = max(1, self._font_metrics.lineSpacing())
@@ -102,8 +112,18 @@ class HugeTextWidget(QAbstractScrollArea):
         # 左侧总固定区域宽度 = 时间戳宽 + 行号宽
         self._line_num_area_width = self._timestamp_width + line_num_width
         
+        # 如果可用宽度改变，清除换行缓存
+        new_available_width = self._get_available_width()
+        if old_available_width != new_available_width:
+            self._wrapped_lines_cache.clear()
+        self._cached_available_width = new_available_width
+        
         self._update_scrollbars()
         self.viewport().update()
+    
+    def _clear_wrapped_cache(self):
+        """清除换行缓存"""
+        self._wrapped_lines_cache.clear()
 
     # ===========================
     # API: 核心功能
@@ -186,35 +206,95 @@ class HugeTextWidget(QAbstractScrollArea):
             self._update_metrics()
 
     def _get_chars_per_line(self):
-        """计算每行能显示的字符数（考虑边距）"""
+        """计算每行能显示的字符数（考虑边距）- 保留用于兼容性，实际应使用实际宽度"""
         viewport_w = self.viewport().width()
         available_width = viewport_w - self._line_num_area_width - 10  # 减去左侧区域和右边距
         if available_width <= 0:
             return 1
         return max(1, int(available_width / self._char_width))
 
-    def _get_wrapped_lines(self, text):
-        """将文本按可用宽度分割成多行，返回行列表"""
+    def _get_available_width(self):
+        """获取可用于文本显示的宽度（考虑边距）"""
+        viewport_w = self.viewport().width()
+        available_width = viewport_w - self._line_num_area_width - 10  # 减去左侧区域和右边距
+        return max(1, available_width)
+
+    def _get_wrapped_lines(self, text, line_idx=None, use_cache=True):
+        """将文本按可用宽度分割成多行，返回行列表（考虑全角/半角字符）
+        
+        Args:
+            text: 要换行的文本
+            line_idx: 行索引，用于缓存（可选）
+            use_cache: 是否使用缓存
+        """
         if not text:
             return ['']
-        chars_per_line = self._get_chars_per_line()
-        if chars_per_line >= len(text):
-            return [text]
         
-        wrapped = []
-        for i in range(0, len(text), chars_per_line):
-            wrapped.append(text[i:i + chars_per_line])
-        return wrapped
+        available_width = self._get_available_width()
+        
+        # 尝试从缓存获取
+        if use_cache and line_idx is not None:
+            cache_key = (line_idx, available_width)
+            if cache_key in self._wrapped_lines_cache:
+                return self._wrapped_lines_cache[cache_key]
+        
+        text_width = self._font_metrics.width(text)
+        
+        # 如果文本宽度不超过可用宽度，直接返回
+        if text_width <= available_width:
+            result = [text]
+        else:
+            wrapped = []
+            current_start = 0
+            current_end = 0
+            current_width = 0
+            
+            i = 0
+            while i < len(text):
+                char = text[i]
+                char_width = self._font_metrics.width(char)
+                
+                # 如果当前字符加上当前行的宽度超过可用宽度，需要换行
+                if current_width + char_width > available_width and current_end > current_start:
+                    # 保存当前行
+                    wrapped.append(text[current_start:current_end])
+                    current_start = current_end
+                    current_width = 0
+                
+                # 如果单个字符就超过可用宽度（极端情况），强制添加
+                if current_start == current_end and char_width > available_width:
+                    wrapped.append(char)
+                    current_start = i + 1
+                    current_end = i + 1
+                    current_width = 0
+                else:
+                    current_end = i + 1
+                    current_width += char_width
+                
+                i += 1
+            
+            # 添加最后一行
+            if current_end > current_start:
+                wrapped.append(text[current_start:current_end])
+            
+            result = wrapped if wrapped else [text]
+        
+        # 存入缓存
+        if use_cache and line_idx is not None:
+            cache_key = (line_idx, available_width)
+            self._wrapped_lines_cache[cache_key] = result
+        
+        return result
 
     def _get_display_line_count(self, line_idx):
-        """获取指定原始行的显示行数（考虑换行）"""
+        """获取指定原始行的显示行数（考虑换行和全角字符）"""
         if line_idx < 0 or line_idx >= len(self._lines):
             return 0
         text = self._lines[line_idx]
-        chars_per_line = self._get_chars_per_line()
-        if chars_per_line <= 0:
+        if not text:
             return 1
-        return max(1, math.ceil(len(text) / chars_per_line))
+        wrapped_lines = self._get_wrapped_lines(text, line_idx=line_idx, use_cache=True)
+        return len(wrapped_lines)
 
     def _get_total_display_lines(self):
         """获取总显示行数（所有原始行换行后的总行数）"""
@@ -230,11 +310,13 @@ class HugeTextWidget(QAbstractScrollArea):
             display_count = self._get_display_line_count(src_row)
             if current_display + display_count > display_row:
                 # 在这一行的某个显示行中
-                wrapped_lines = self._get_wrapped_lines(self._lines[src_row])
+                wrapped_lines = self._get_wrapped_lines(self._lines[src_row], line_idx=src_row, use_cache=True)
                 local_display = display_row - current_display
                 if local_display < len(wrapped_lines):
-                    chars_per_line = self._get_chars_per_line()
-                    col = local_display * chars_per_line
+                    # 计算到当前显示行的字符偏移
+                    col = 0
+                    for i in range(local_display):
+                        col += len(wrapped_lines[i])
                     return (src_row, col)
                 else:
                     # 在最后一行，返回行尾
@@ -256,11 +338,15 @@ class HugeTextWidget(QAbstractScrollArea):
             display_row += self._get_display_line_count(i)
         
         # 计算在当前行的哪个显示行
-        chars_per_line = self._get_chars_per_line()
-        if chars_per_line > 0:
-            display_row += col // chars_per_line
+        wrapped_lines = self._get_wrapped_lines(self._lines[src_row], line_idx=src_row, use_cache=True)
+        char_count = 0
+        for i, wrapped_line in enumerate(wrapped_lines):
+            if col < char_count + len(wrapped_line):
+                return display_row + i
+            char_count += len(wrapped_line)
         
-        return display_row
+        # 如果列号超出，返回最后一个显示行
+        return display_row + len(wrapped_lines) - 1
 
     # ===========================
     # 渲染逻辑
@@ -296,7 +382,7 @@ class HugeTextWidget(QAbstractScrollArea):
         current_display_row = 0
         for src_row in range(len(self._lines)):
             line_text = self._lines[src_row]
-            wrapped_lines = self._get_wrapped_lines(line_text)
+            wrapped_lines = self._get_wrapped_lines(line_text, line_idx=src_row, use_cache=True)
             display_count = len(wrapped_lines)
             
             for wrap_idx, wrapped_text in enumerate(wrapped_lines):
@@ -318,9 +404,11 @@ class HugeTextWidget(QAbstractScrollArea):
                 # 绘制选择背景
                 if sel_start and sel_end:
                     if sel_start[0] <= src_row <= sel_end[0]:
-                        chars_per_line = self._get_chars_per_line()
-                        start_char_in_line = wrap_idx * chars_per_line
-                        end_char_in_line = min(start_char_in_line + len(wrapped_text), len(line_text))
+                        # 重用已计算的 wrapped_lines，避免重复计算
+                        start_char_in_line = 0
+                        for i in range(wrap_idx):
+                            start_char_in_line += len(wrapped_lines[i])
+                        end_char_in_line = start_char_in_line + len(wrapped_text)
                         
                         # 计算选择范围在这一行的部分
                         if src_row == sel_start[0] and src_row == sel_end[0]:
@@ -328,27 +416,33 @@ class HugeTextWidget(QAbstractScrollArea):
                             sel_start_char = max(start_char_in_line, sel_start[1])
                             sel_end_char = min(end_char_in_line, sel_end[1])
                             if sel_end_char > sel_start_char:
-                                sel_x = self._line_num_area_width + 5 + ((sel_start_char - start_char_in_line) * self._char_width)
-                                sel_w = (sel_end_char - sel_start_char) * self._char_width
+                                # 计算选择区域在当前显示行中的位置
+                                text_before_sel = wrapped_text[:max(0, sel_start_char - start_char_in_line)]
+                                selected_text = line_text[sel_start_char:sel_end_char]
+                                sel_x = self._line_num_area_width + 5 + self._font_metrics.width(text_before_sel)
+                                sel_w = self._font_metrics.width(selected_text)
                                 painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
                         elif src_row == sel_start[0]:
                             # 选择开始行
                             sel_start_char = max(start_char_in_line, sel_start[1])
                             if sel_start_char < end_char_in_line:
-                                sel_x = self._line_num_area_width + 5 + ((sel_start_char - start_char_in_line) * self._char_width)
-                                sel_w = (end_char_in_line - sel_start_char) * self._char_width
+                                text_before_sel = wrapped_text[:max(0, sel_start_char - start_char_in_line)]
+                                selected_text = line_text[sel_start_char:end_char_in_line]
+                                sel_x = self._line_num_area_width + 5 + self._font_metrics.width(text_before_sel)
+                                sel_w = self._font_metrics.width(selected_text)
                                 painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
                         elif src_row == sel_end[0]:
                             # 选择结束行
                             sel_end_char = min(end_char_in_line, sel_end[1])
                             if sel_end_char > start_char_in_line:
+                                selected_text = line_text[start_char_in_line:sel_end_char]
                                 sel_x = self._line_num_area_width + 5
-                                sel_w = (sel_end_char - start_char_in_line) * self._char_width
+                                sel_w = self._font_metrics.width(selected_text)
                                 painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
                         elif sel_start[0] < src_row < sel_end[0]:
                             # 中间行，全选
                             sel_x = self._line_num_area_width + 5
-                            sel_w = len(wrapped_text) * self._char_width
+                            sel_w = self._font_metrics.width(wrapped_text)
                             painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
 
                 # --- 绘制左侧区域 (固定不动) ---
@@ -382,9 +476,45 @@ class HugeTextWidget(QAbstractScrollArea):
                 painter.translate(x_offset, 0)
                 # --- 左侧绘制结束 ---
 
-                # C. 绘制文本内容
+                # C. 绘制高亮和文本内容
+                text_x = self._line_num_area_width + 5
+                
+                # 计算当前显示行在原始行中的字符偏移
+                chars_per_line = self._get_chars_per_line()
+                start_char_offset = wrap_idx * chars_per_line
+                end_char_offset = min(start_char_offset + len(wrapped_text), len(line_text))
+                
+                # 获取原始行的完整文本用于匹配
+                full_line_text = line_text
+                
+                # 绘制高亮背景
+                if self._highlight_rules and full_line_text:
+                    # 查找匹配位置（相对于原始行的位置）
+                    matches = self._find_highlight_matches(full_line_text)
+                    
+                    for match_start, match_end, match_color in matches:
+                        # 检查匹配是否在当前显示行范围内
+                        if match_end <= start_char_offset or match_start >= end_char_offset:
+                            continue
+                        
+                        # 计算在当前显示行中的位置
+                        display_match_start = max(0, match_start - start_char_offset)
+                        display_match_end = min(len(wrapped_text), match_end - start_char_offset)
+                        
+                        if display_match_end > display_match_start:
+                            # 使用QFontMetrics计算实际文本宽度（正确处理全角/半角字符）
+                            text_before_match = wrapped_text[:display_match_start]
+                            matched_text = wrapped_text[display_match_start:display_match_end]
+                            
+                            # 计算匹配文本的起始X位置和宽度
+                            highlight_x = text_x + self._font_metrics.width(text_before_match)
+                            highlight_w = self._font_metrics.width(matched_text)
+                            
+                            painter.fillRect(highlight_x, draw_y, highlight_w, self._line_height, match_color)
+                
+                # 绘制文本内容（在高亮背景之上）
                 painter.setPen(self._colors['text'])
-                painter.drawText(self._line_num_area_width + 5, draw_y, 
+                painter.drawText(text_x, draw_y, 
                                  viewport_w, self._line_height, 
                                  Qt.AlignLeft | Qt.AlignVCenter, wrapped_text)
             
@@ -447,13 +577,79 @@ class HugeTextWidget(QAbstractScrollArea):
     def set_encoding(self, encoding: str):
         """设置字符编码"""
         self._encoding = encoding.lower()
+    
+    def set_highlight_rules(self, rules):
+        """
+        设置高亮规则
+        
+        Args:
+            rules: 规则列表，每个规则为字典，格式：
+                {
+                    'keyword': str,      # 关键字
+                    'use_regex': bool,   # 是否使用正则表达式
+                    'color': str         # 颜色（如 '#FFFF00'）
+                }
+        """
+        self._highlight_rules = rules if rules else []
+        self.viewport().update()
+    
+    def clear_highlight_rules(self):
+        """清空所有高亮规则"""
+        self._highlight_rules = []
+        self.viewport().update()
+    
+    def _find_highlight_matches(self, text):
+        """
+        查找文本中的所有高亮匹配位置
+        
+        Returns:
+            list: 匹配位置列表，每个元素为 (start, end, color)
+        """
+        matches = []
+        if not text or not self._highlight_rules:
+            return matches
+        
+        for rule in self._highlight_rules:
+            keyword = rule.get('keyword', '')
+            if not keyword:
+                continue
+            
+            use_regex = rule.get('use_regex', False)
+            color = QColor(rule.get('color', '#FFFF00'))
+            if not color.isValid():
+                color = QColor('#FFFF00')
+            
+            try:
+                if use_regex:
+                    # 使用正则表达式
+                    pattern = re.compile(keyword)
+                    for match in pattern.finditer(text):
+                        matches.append((match.start(), match.end(), color))
+                else:
+                    # 普通字符串匹配
+                    start = 0
+                    while True:
+                        pos = text.find(keyword, start)
+                        if pos == -1:
+                            break
+                        matches.append((pos, pos + len(keyword), color))
+                        start = pos + 1
+            except (re.error, Exception):
+                # 如果正则表达式错误，跳过这条规则
+                continue
+        
+        # 按位置排序
+        matches.sort(key=lambda x: x[0])
+        return matches
 
     def set_font_family(self, family: str):
         self._font.setFamily(family)
+        self._clear_wrapped_cache()  # 字体改变时清除缓存
         self._update_metrics()
 
     def set_font_size(self, size: int):
         self._font.setPointSize(size)
+        self._clear_wrapped_cache()  # 字体改变时清除缓存
         self._update_metrics()
 
     def set_text_color(self, color: QColor):
@@ -506,6 +702,7 @@ class HugeTextWidget(QAbstractScrollArea):
         self._raw_bytes = b""
         self._sel_start_pos = None
         self._sel_end_pos = None
+        self._clear_wrapped_cache()  # 清除换行缓存
         self._update_metrics() # 重置宽度
         self._update_scrollbars()
         self.viewport().update()
@@ -516,6 +713,7 @@ class HugeTextWidget(QAbstractScrollArea):
         now = time.time()
         self._line_timestamps = [now] * len(self._lines)
         self._raw_bytes = text.encode(self._encoding, errors='replace')
+        self._clear_wrapped_cache()  # 清除换行缓存
         self._update_metrics()
         self._update_scrollbars()
         self.viewport().update()
@@ -559,25 +757,45 @@ class HugeTextWidget(QAbstractScrollArea):
         # 将显示行映射到原始行和列
         src_row, base_col = self._display_row_to_source_row_col(display_row)
         
-        # 计算在该显示行的列偏移
-        chars_per_line = self._get_chars_per_line()
-        if chars_per_line > 0:
+        if 0 <= src_row < len(self._lines):
+            line_text = self._lines[src_row]
+            wrapped_lines = self._get_wrapped_lines(line_text, line_idx=src_row, use_cache=True)
+            
             # 找到该显示行在原始行中的起始位置
-            wrapped_lines = self._get_wrapped_lines(self._lines[src_row] if src_row < len(self._lines) else "")
             current_display = 0
             for i in range(src_row):
                 current_display += self._get_display_line_count(i)
             local_display = display_row - current_display
             
-            # 减去行号区域(包含时间戳)
-            rel_x = x - self._line_num_area_width - 5
-            col_offset = max(0, int(rel_x / self._char_width))
-            
-            # 计算原始列号
-            col = local_display * chars_per_line + col_offset
+            if 0 <= local_display < len(wrapped_lines):
+                # 获取当前显示行的文本
+                wrapped_text = wrapped_lines[local_display]
+                
+                # 减去行号区域(包含时间戳)
+                rel_x = x - self._line_num_area_width - 5
+                
+                # 使用实际宽度找到鼠标位置对应的字符索引
+                col_offset = 0
+                current_width = 0
+                for i, char in enumerate(wrapped_text):
+                    char_width = self._font_metrics.width(char)
+                    if current_width + char_width / 2 > rel_x:
+                        # 鼠标在当前位置的字符上，选择该字符
+                        col_offset = i
+                        break
+                    current_width += char_width
+                    col_offset = i + 1
+                
+                # 计算原始行中的列号
+                base_col = 0
+                for i in range(local_display):
+                    base_col += len(wrapped_lines[i])
+                col = base_col + col_offset
+            else:
+                # 超出范围，返回行尾或行首
+                col = len(line_text) if local_display >= len(wrapped_lines) else 0
         else:
-            rel_x = x - self._line_num_area_width - 5
-            col = max(0, round(rel_x / self._char_width))
+            col = 0
         
         if 0 <= src_row < len(self._lines):
             col = min(col, len(self._lines[src_row]))
@@ -654,9 +872,10 @@ class HugeTextWidget(QAbstractScrollArea):
         self._line_height = self._font_metrics.lineSpacing()
         self._char_width = self._font_metrics.width('A')
         
+        self._clear_wrapped_cache()  # 字体改变时清除缓存
         self.viewport().setStyleSheet(f"background-color: {self._bg_color.name()};")
         self.setFont(self._font)
-        self._update_scrollbars()
+        self._update_metrics()  # 使用 _update_metrics 而不是直接调用 _update_scrollbars
         self.viewport().update()
 
     def scroll_to_bottom(self):

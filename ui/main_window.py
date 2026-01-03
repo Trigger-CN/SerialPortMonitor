@@ -3,7 +3,7 @@
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
                              QLabel, QApplication, QWidget,
-                             QStackedWidget, QProgressBar, QMessageBox)
+                             QStackedWidget, QProgressBar, QMessageBox, QDialog)
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex
 from PyQt5.QtGui import QFont
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
@@ -19,6 +19,7 @@ from utils.file_handler import FileHandler
 from utils.config_handler import ConfigHandler  # 导入ConfigHandler类
 from PyQt5.QtWidgets import QFileDialog
 from ui.preference_window import PreferenceWindow
+from ui.highlight_config_window import HighlightConfigWindow
 
 class LazyDisplayUpdateWorker(QThread):
     """懒加载显示更新工作线程"""
@@ -63,6 +64,8 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.init_connections()
         self.refresh_ports()
+        # 初始化高亮规则
+        self._current_highlight_rules = []
         # 加载配置
         self.load_config()
     
@@ -133,6 +136,24 @@ class MainWindow(QMainWindow):
         self.normal_display.set_text_color(font_color)
         self.normal_display.set_bg_color(font_bg_color)
         self.normal_display.set_encoding(encoding)
+    
+    def open_highlight_config(self):
+        """打开高亮配置窗口"""
+        if not hasattr(self, 'highlight_config_window'):
+            self.highlight_config_window = HighlightConfigWindow(self)
+        
+        # 加载当前的高亮规则
+        current_rules = getattr(self, '_current_highlight_rules', [])
+        self.highlight_config_window.set_rules(current_rules)
+        
+        # 显示窗口
+        if self.highlight_config_window.exec_() == QDialog.Accepted:
+            # 获取规则并应用
+            rules = self.highlight_config_window.get_rules()
+            self._current_highlight_rules = rules
+            self.normal_display.set_highlight_rules(rules)
+            # 保存配置到文件
+            self.save_config()
 
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
@@ -200,6 +221,11 @@ class MainWindow(QMainWindow):
         self.auto_scroll.setCheckable(True)
         self.auto_scroll.toggled.connect(self.on_auto_scroll_changed)
         config_layout.addWidget(self.auto_scroll)
+        
+        # 查找高亮按钮
+        self.highlight_btn = StyledButton("🔍查找高亮")
+        self.highlight_btn.clicked.connect(self.open_highlight_config)
+        config_layout.addWidget(self.highlight_btn)
         
         # 清空显示按钮
         self.clear_btn = StyledButton("🗑️清空显示")
@@ -380,6 +406,12 @@ class MainWindow(QMainWindow):
                     self.prefs_window.encoding_combo.setCurrentText(encoding_text)
 
             self.apply_log_preferences()
+            
+            # 加载高亮规则
+            if 'highlight_rules' in config:
+                highlight_rules = config['highlight_rules']
+                self._current_highlight_rules = highlight_rules if highlight_rules else []
+                self.normal_display.set_highlight_rules(self._current_highlight_rules)
 
         except Exception as e:
             self.status_label.setText(f"❌ 加载配置失败: {str(e)}")
@@ -401,7 +433,8 @@ class MainWindow(QMainWindow):
             'font': self.prefs_window.font_combo.currentFont().family(),
             'font_size': int(self.prefs_window.spin_size.value()) if self.prefs_window.spin_size.value() else 10,
             'font_color': self.prefs_window.text_color or VSCodeTheme.FOREGROUND,
-            'bg_color': self.prefs_window.bg_color or VSCodeTheme.BACKGROUND_LIGHT
+            'bg_color': self.prefs_window.bg_color or VSCodeTheme.BACKGROUND_LIGHT,
+            'highlight_rules': getattr(self, '_current_highlight_rules', [])
         }
         
         try:
