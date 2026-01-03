@@ -5,6 +5,8 @@
 
 __version__ = "0.0.0"  # 开发版本，在GitHub Actions构建时会被替换
 __author__ = "Trigger-CN"
+__author_email__ = "cometjab@gmail.com"
+__github_url__ = "https://github.com/Trigger-CN/SerialPortMonitor"
 
 def get_version():
     """获取版本号"""
@@ -13,6 +15,14 @@ def get_version():
 def get_author():
     """获取作者"""
     return __author__
+
+def get_author_email():
+    """获取作者邮箱"""
+    return __author_email__
+
+def get_github_url():
+    """获取GitHub链接"""
+    return __github_url__
 
 def get_app_title():
     """获取应用程序标题（包含版本号和作者）"""

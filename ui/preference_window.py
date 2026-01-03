@@ -8,6 +8,7 @@ from utils.config_handler import ConfigHandler
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
                        StyledTextEdit, StyledLineEdit, StyledCheckBox, 
                        StyledGroupBox, ComparisonTextDisplay, StyledLazyTextEdit)
+import version
 
 class PreferenceWindow(QDialog):
     """首选项窗口"""
@@ -15,7 +16,7 @@ class PreferenceWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("🔧 设置首选项")
-        self.resize(400, 300)
+        self.resize(450, 550)
         self.text_color = VSCodeTheme.FOREGROUND
         self.bg_color = VSCodeTheme.BACKGROUND_LIGHT
         self.init_ui()
@@ -87,6 +88,46 @@ class PreferenceWindow(QDialog):
         
         log_display_group.setLayout(log_display_layout)
         layout.addWidget(log_display_group)
+        
+        # 应用信息
+        info_group = StyledGroupBox("ℹ️ 应用信息")
+        info_layout = QVBoxLayout()
+        
+        # 作者
+        author_label = QLabel(f"👤 作者: {version.get_author()}")
+        author_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND};")
+        info_layout.addWidget(author_label)
+        
+        # 版本号
+        version_text = version.get_version()
+        if version_text == "0.0.0":
+            version_display = "开发版本"
+        else:
+            version_display = f"v{version_text}"
+        version_label = QLabel(f"📦 版本: {version_display}")
+        version_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND};")
+        info_layout.addWidget(version_label)
+        
+        # 作者邮箱
+        email_label = QLabel(f"📧 邮箱: {version.get_author_email()}")
+        email_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND};")
+        info_layout.addWidget(email_label)
+        
+        # GitHub链接
+        github_layout = QHBoxLayout()
+        github_label = QLabel("🔗 GitHub: ")
+        github_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND};")
+        github_layout.addWidget(github_label)
+        
+        github_link = QLabel(f'<a href="{version.get_github_url()}" style="color: {VSCodeTheme.BLUE}; text-decoration: none;">{version.get_github_url()}</a>')
+        github_link.setOpenExternalLinks(True)
+        github_link.setTextInteractionFlags(Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
+        github_layout.addWidget(github_link)
+        github_layout.addStretch()
+        info_layout.addLayout(github_layout)
+        
+        info_group.setLayout(info_layout)
+        layout.addWidget(info_group)
         
         # 按钮布局
         button_layout = QHBoxLayout()
