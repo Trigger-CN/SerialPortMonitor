@@ -43,6 +43,11 @@ class HugeTextWidget(QAbstractScrollArea):
         # --- 高亮规则 ---
         self._highlight_rules = []  # 存储高亮规则列表
         
+        # --- 过滤功能 ---
+        self._filter_pattern = None  # 正则表达式模式对象
+        self._filter_enabled = False  # 是否启用过滤
+        self._filter_regex_str = ""  # 原始正则表达式字符串
+        
         # --- 性能优化：换行结果缓存 ---
         self._wrapped_lines_cache = {}  # 缓存换行结果: {(line_idx, available_width): wrapped_lines}
         self._cached_available_width = None  # 缓存时的可用宽度
@@ -297,16 +302,23 @@ class HugeTextWidget(QAbstractScrollArea):
         return len(wrapped_lines)
 
     def _get_total_display_lines(self):
-        """获取总显示行数（所有原始行换行后的总行数）"""
+        """获取总显示行数（所有原始行换行后的总行数，考虑过滤）"""
         total = 0
         for i in range(len(self._lines)):
+            # 如果启用过滤且不匹配，跳过这一行
+            if not self._line_matches_filter(self._lines[i]):
+                continue
             total += self._get_display_line_count(i)
         return total
 
     def _display_row_to_source_row_col(self, display_row):
-        """将显示行号映射到原始行号和列号"""
+        """将显示行号映射到原始行号和列号（考虑过滤）"""
         current_display = 0
         for src_row in range(len(self._lines)):
+            # 如果启用过滤且不匹配，跳过这一行
+            if not self._line_matches_filter(self._lines[src_row]):
+                continue
+            
             display_count = self._get_display_line_count(src_row)
             if current_display + display_count > display_row:
                 # 在这一行的某个显示行中
@@ -322,20 +334,29 @@ class HugeTextWidget(QAbstractScrollArea):
                     # 在最后一行，返回行尾
                     return (src_row, len(self._lines[src_row]))
             current_display += display_count
-        # 超出范围，返回最后一行
+        # 超出范围，返回最后一行（考虑过滤）
         if self._lines:
+            # 找到最后一个匹配的行
+            for i in range(len(self._lines) - 1, -1, -1):
+                if self._line_matches_filter(self._lines[i]):
+                    return (i, len(self._lines[i]))
             return (len(self._lines) - 1, len(self._lines[-1]))
         return (0, 0)
 
     def _source_row_col_to_display_row(self, src_row, col):
-        """将原始行号和列号映射到显示行号"""
+        """将原始行号和列号映射到显示行号（考虑过滤）"""
         if src_row < 0 or src_row >= len(self._lines):
             return 0
         
-        # 计算之前所有原始行的显示行数
+        # 计算之前所有原始行的显示行数（只计算匹配过滤的行）
         display_row = 0
         for i in range(src_row):
-            display_row += self._get_display_line_count(i)
+            if self._line_matches_filter(self._lines[i]):
+                display_row += self._get_display_line_count(i)
+        
+        # 如果当前行不匹配过滤，返回之前的总行数
+        if not self._line_matches_filter(self._lines[src_row]):
+            return display_row
         
         # 计算在当前行的哪个显示行
         wrapped_lines = self._get_wrapped_lines(self._lines[src_row], line_idx=src_row, use_cache=True)
@@ -382,6 +403,11 @@ class HugeTextWidget(QAbstractScrollArea):
         current_display_row = 0
         for src_row in range(len(self._lines)):
             line_text = self._lines[src_row]
+            
+            # 过滤：如果启用过滤且不匹配，跳过这一行
+            if not self._line_matches_filter(line_text):
+                continue
+            
             wrapped_lines = self._get_wrapped_lines(line_text, line_idx=src_row, use_cache=True)
             display_count = len(wrapped_lines)
             
@@ -641,6 +667,60 @@ class HugeTextWidget(QAbstractScrollArea):
         # 按位置排序
         matches.sort(key=lambda x: x[0])
         return matches
+    
+    def _line_matches_filter(self, line_text):
+        """
+        检查行是否匹配过滤条件
+        
+        Args:
+            line_text: 行文本
+            
+        Returns:
+            bool: 如果启用过滤且模式存在，返回是否匹配；否则返回 True
+        """
+        if not self._filter_enabled or not self._filter_pattern:
+            return True
+        
+        try:
+            return bool(self._filter_pattern.search(line_text))
+        except (re.error, Exception):
+            # 如果正则表达式错误，显示所有行
+            return True
+    
+    def set_filter_pattern(self, pattern_str):
+        """
+        设置过滤正则表达式模式
+        
+        Args:
+            pattern_str: 正则表达式字符串，如果为空则清除过滤
+        """
+        self._filter_regex_str = pattern_str
+        if pattern_str:
+            try:
+                self._filter_pattern = re.compile(pattern_str)
+            except re.error:
+                # 如果正则表达式无效，清除模式
+                self._filter_pattern = None
+        else:
+            self._filter_pattern = None
+        
+        # 清除换行缓存，因为过滤可能改变显示的行
+        self._clear_wrapped_cache()
+        self._update_scrollbars()
+        self.viewport().update()
+    
+    def set_filter_enabled(self, enabled):
+        """
+        启用或禁用过滤功能
+        
+        Args:
+            enabled: 是否启用过滤
+        """
+        self._filter_enabled = enabled
+        # 清除换行缓存，因为过滤可能改变显示的行
+        self._clear_wrapped_cache()
+        self._update_scrollbars()
+        self.viewport().update()
 
     def set_font_family(self, family: str):
         self._font.setFamily(family)
@@ -754,17 +834,23 @@ class HugeTextWidget(QAbstractScrollArea):
         # 计算显示行号
         display_row = self.verticalScrollBar().value() + (y // self._line_height)
         
-        # 将显示行映射到原始行和列
+        # 将显示行映射到原始行和列（考虑过滤）
         src_row, base_col = self._display_row_to_source_row_col(display_row)
         
         if 0 <= src_row < len(self._lines):
+            # 确保该行匹配过滤（应该总是匹配，因为 _display_row_to_source_row_col 已经处理了）
+            if not self._line_matches_filter(self._lines[src_row]):
+                # 如果不匹配，返回行首
+                return (src_row, 0)
+            
             line_text = self._lines[src_row]
             wrapped_lines = self._get_wrapped_lines(line_text, line_idx=src_row, use_cache=True)
             
-            # 找到该显示行在原始行中的起始位置
+            # 找到该显示行在原始行中的起始位置（考虑过滤）
             current_display = 0
             for i in range(src_row):
-                current_display += self._get_display_line_count(i)
+                if self._line_matches_filter(self._lines[i]):
+                    current_display += self._get_display_line_count(i)
             local_display = display_row - current_display
             
             if 0 <= local_display < len(wrapped_lines):

@@ -20,6 +20,7 @@ from utils.config_handler import ConfigHandler  # 导入ConfigHandler类
 from PyQt5.QtWidgets import QFileDialog
 from ui.preference_window import PreferenceWindow
 from ui.highlight_config_window import HighlightConfigWindow
+from ui.log_window import LogWindow
 import version
 
 class LazyDisplayUpdateWorker(QThread):
@@ -67,6 +68,9 @@ class MainWindow(QMainWindow):
         self.refresh_ports()
         # 初始化高亮规则
         self._current_highlight_rules = []
+        # 多窗口管理
+        self.log_windows = []  # 存储所有日志窗口
+        self._window_counter = 0  # 窗口计数器
         # 加载配置
         self.load_config()
     
@@ -137,6 +141,15 @@ class MainWindow(QMainWindow):
         self.normal_display.set_text_color(font_color)
         self.normal_display.set_bg_color(font_bg_color)
         self.normal_display.set_encoding(encoding)
+        
+        # 同步设置到所有日志窗口
+        for log_window in self.log_windows:
+            if log_window and log_window.isVisible():
+                log_window.set_font_size(font_size)
+                log_window.set_font_family(font)
+                log_window.set_text_color(font_color)
+                log_window.set_bg_color(font_bg_color)
+                log_window.set_encoding(encoding)
     
     def open_highlight_config(self):
         """打开高亮配置窗口"""
@@ -153,6 +166,10 @@ class MainWindow(QMainWindow):
             rules = self.highlight_config_window.get_rules()
             self._current_highlight_rules = rules
             self.normal_display.set_highlight_rules(rules)
+            # 同步高亮规则到所有日志窗口
+            for log_window in self.log_windows:
+                if log_window and log_window.isVisible():
+                    log_window.set_highlight_rules(rules)
             # 保存配置到文件
             self.save_config()
 
@@ -271,6 +288,30 @@ class MainWindow(QMainWindow):
         """创建数据显示区域"""
         data_group = StyledGroupBox("📊数据监视")
         data_layout = QVBoxLayout()
+        
+        # 添加过滤控件
+        filter_layout = QHBoxLayout()
+        filter_layout.setSpacing(5)
+        
+        filter_label = QLabel("🔍 过滤表达式:")
+        filter_layout.addWidget(filter_label)
+        
+        self.filter_input = StyledLineEdit()
+        self.filter_input.setPlaceholderText("输入正则表达式（如: error|warning）")
+        self.filter_input.textChanged.connect(self.on_filter_pattern_changed)
+        filter_layout.addWidget(self.filter_input)
+        
+        self.filter_enable_btn = StyledButton("启用过滤")
+        self.filter_enable_btn.setCheckable(True)
+        self.filter_enable_btn.toggled.connect(self.on_filter_enabled_changed)
+        filter_layout.addWidget(self.filter_enable_btn)
+        
+        # 添加"添加窗口"按钮
+        self.add_window_btn = StyledButton("➕ 添加窗口")
+        self.add_window_btn.clicked.connect(self.create_log_window)
+        filter_layout.addWidget(self.add_window_btn)
+        
+        data_layout.addLayout(filter_layout)
         
         # 数据展示区域
         self.display_stack = QStackedWidget()
@@ -488,17 +529,80 @@ class MainWindow(QMainWindow):
             self.timestamp.set_checked_style()
         else:
             self.timestamp.set_default_style()
-        self.normal_display.set_show_timestamp(self.timestamp.isChecked())
+        show_timestamp = self.timestamp.isChecked()
+        self.normal_display.set_show_timestamp(show_timestamp)
+        
+        # 同步时间戳设置到所有日志窗口
+        for log_window in self.log_windows:
+            if log_window and log_window.isVisible():
+                log_window.set_show_timestamp(show_timestamp)
 
     def on_auto_scroll_changed(self, enabled: bool):
         """自动滚动设置改变时的处理"""
         # 如果启用自动滚动，滚动到底部
-        if self.auto_scroll.isChecked():
+        auto_scroll_enabled = self.auto_scroll.isChecked()
+        if auto_scroll_enabled:
             self.auto_scroll.set_checked_style()
             self.normal_display.set_auto_scroll(True)
         else:
             self.auto_scroll.set_default_style()
             self.normal_display.set_auto_scroll(False)
+        
+        # 同步自动滚动设置到所有日志窗口
+        for log_window in self.log_windows:
+            if log_window and log_window.isVisible():
+                log_window.set_auto_scroll(auto_scroll_enabled)
+    
+    def on_filter_pattern_changed(self, pattern_str):
+        """过滤表达式改变时的处理"""
+        import re
+        # 验证正则表达式是否有效
+        if pattern_str:
+            try:
+                re.compile(pattern_str)
+                is_valid = True
+            except re.error:
+                is_valid = False
+        else:
+            is_valid = True
+        
+        self.normal_display.set_filter_pattern(pattern_str)
+        if self.filter_enable_btn.isChecked():
+            # 如果已启用过滤，更新状态栏提示
+            if pattern_str:
+                if is_valid:
+                    self.status_label.setText(f"🔍 过滤模式: {pattern_str}")
+                else:
+                    self.status_label.setText(f"❌ 无效的正则表达式: {pattern_str}")
+                    self.status_label.setStyleSheet(f"color: {VSCodeTheme.RED};")
+            else:
+                self.status_label.setText("🔍 过滤表达式为空")
+                self.status_label.setStyleSheet(f"color: {VSCodeTheme.GREEN};")
+    
+    def on_filter_enabled_changed(self, enabled: bool):
+        """过滤使能状态改变时的处理"""
+        self.normal_display.set_filter_enabled(enabled)
+        if enabled:
+            self.filter_enable_btn.set_checked_style()
+            self.filter_enable_btn.setText("禁用过滤")
+            pattern = self.filter_input.text()
+            if pattern:
+                import re
+                try:
+                    re.compile(pattern)
+                    self.status_label.setText(f"🔍 过滤已启用: {pattern}")
+                    self.status_label.setStyleSheet(f"color: {VSCodeTheme.GREEN};")
+                except re.error:
+                    self.status_label.setText(f"❌ 无效的正则表达式: {pattern}")
+                    self.status_label.setStyleSheet(f"color: {VSCodeTheme.RED};")
+            else:
+                self.status_label.setText("🔍 过滤已启用（表达式为空，显示所有行）")
+                self.status_label.setStyleSheet(f"color: {VSCodeTheme.GREEN};")
+        else:
+            self.filter_enable_btn.set_default_style()
+            self.filter_enable_btn.setText("启用过滤")
+            self.status_label.setText("🔍 过滤已禁用")
+            self.status_label.setStyleSheet(f"color: {VSCodeTheme.GREEN};")
     
     def scroll_to_bottom(self):
         """滚动到底部"""
@@ -602,6 +706,11 @@ class MainWindow(QMainWindow):
         self.update_stats()
         self.normal_display.append_raw_bytes(data)
         
+        # 向所有日志窗口发送数据
+        for log_window in self.log_windows:
+            if log_window and log_window.isVisible():
+                log_window.append_data(data)
+        
         # # 如果启用了自动滚动，滚动到底部
         # if self.auto_scroll.isChecked():
         #     self.scroll_to_bottom()
@@ -665,9 +774,66 @@ class MainWindow(QMainWindow):
             self.baud_combo.setEnabled(True)
             self.status_label.setText("🔌 已断开连接")
     
+    def create_log_window(self):
+        """创建新的日志窗口"""
+        self._window_counter += 1
+        log_window = LogWindow(self, window_id=self._window_counter)
+        
+        # 应用当前的首选项设置
+        font = self.prefs_window.font_combo.currentFont().family()
+        font_size = self.prefs_window.spin_size.value() or 10
+        font_color = self.prefs_window.text_color or VSCodeTheme.FOREGROUND
+        font_bg_color = self.prefs_window.bg_color or VSCodeTheme.BACKGROUND
+        encoding = self.prefs_window.encoding_combo.currentText().lower()
+        
+        log_window.set_font_size(font_size)
+        log_window.set_font_family(font)
+        log_window.set_text_color(font_color)
+        log_window.set_bg_color(font_bg_color)
+        log_window.set_encoding(encoding)
+        log_window.set_show_timestamp(self.timestamp.isChecked())
+        log_window.set_auto_scroll(self.auto_scroll.isChecked())
+        
+        # 应用当前的高亮规则
+        log_window.set_highlight_rules(self._current_highlight_rules)
+        
+        # 同步历史数据到新窗口（可选：如果希望新窗口也显示历史数据）
+        # 注意：由于新窗口有自己的过滤，历史数据会经过过滤后才显示
+        try:
+            historical_data = self.normal_display.get_cached_data()
+            if historical_data:
+                # 将历史数据作为字节发送到新窗口
+                historical_bytes = historical_data.encode(encoding, errors='replace')
+                log_window.append_data(historical_bytes)
+        except Exception as e:
+            # 如果获取历史数据失败，不影响新窗口的创建
+            pass
+        
+        # 连接窗口关闭信号
+        log_window.window_closed.connect(self.on_log_window_closed)
+        
+        # 添加到窗口列表
+        self.log_windows.append(log_window)
+        
+        # 显示窗口
+        log_window.show()
+        
+        self.status_label.setText(f"✅ 已创建日志窗口 {self._window_counter}")
+    
+    def on_log_window_closed(self, log_window):
+        """处理日志窗口关闭事件"""
+        if log_window in self.log_windows:
+            self.log_windows.remove(log_window)
+        self.status_label.setText(f"📋 当前有 {len(self.log_windows)} 个日志窗口")
+    
     def closeEvent(self, event):
         """关闭事件处理"""
         self.is_closing = True
+        
+        # 关闭所有日志窗口
+        for log_window in self.log_windows[:]:  # 使用切片复制列表，避免迭代时修改
+            log_window.close()
+        self.log_windows.clear()
         
         # 断开串口连接
         self.disconnect_serial()
