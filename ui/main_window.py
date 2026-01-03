@@ -20,6 +20,7 @@ from utils.config_handler import ConfigHandler  # 导入ConfigHandler类
 from PyQt5.QtWidgets import QFileDialog
 from ui.preference_window import PreferenceWindow
 from ui.highlight_config_window import HighlightConfigWindow
+import version
 
 class LazyDisplayUpdateWorker(QThread):
     """懒加载显示更新工作线程"""
@@ -71,7 +72,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         """初始化用户界面"""
-        self.setWindowTitle("🔧串口监看工具 by Trigger-CN")
+        self.setWindowTitle(version.get_app_title())
         # self.setGeometry(100, 100, 1400, 1100)
         self.resize(1400, 1100)
         

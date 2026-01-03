@@ -18,6 +18,15 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
+    - name: Update version info
+      if: github.event_name == 'release'
+      run: |
+        $version = "${{ github.ref_name }}"
+        if ($version.StartsWith("v")) {
+          $version = $version.Substring(1)
+        }
+        (Get-Content version.py) -replace '__version__ = ".*"', "__version__ = `"$version`"" | Set-Content version.py
+        Write-Host "Updated version to: $version"
     - name: Build Windows executable
       run: |
         pyinstaller --onefile --windowed --icon=img/serialmonitor.ico --name=SerialMonitor main.py
@@ -38,6 +47,15 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
+    - name: Update version info
+      if: github.event_name == 'release'
+      run: |
+        VERSION="${{ github.ref_name }}"
+        if [[ $VERSION == v* ]]; then
+          VERSION=${VERSION#v}
+        fi
+        sed -i '' "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" version.py
+        echo "Updated version to: $VERSION"
     - name: Build macOS app
       run: |
         pyinstaller --windowed --name=SerialMonitor main.py
@@ -64,6 +82,15 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install pyqt5 pyserial pyinstaller
+    - name: Update version info
+      if: github.event_name == 'release'
+      run: |
+        VERSION="${{ github.ref_name }}"
+        if [[ $VERSION == v* ]]; then
+          VERSION=${VERSION#v}
+        fi
+        sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" version.py
+        echo "Updated version to: $VERSION"
     - name: Build Linux binary
       run: |
         pyinstaller --onefile --name=SerialMonitor main.py
