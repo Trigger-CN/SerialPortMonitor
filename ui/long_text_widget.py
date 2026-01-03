@@ -70,6 +70,13 @@ class HugeTextWidget(QAbstractScrollArea):
         self.verticalScrollBar().valueChanged.connect(self.viewport().update)
         self.horizontalScrollBar().valueChanged.connect(self.viewport().update)
 
+    def resizeEvent(self, event):
+        """窗口大小改变时，重新计算滚动条"""
+        super().resizeEvent(event)
+        if self._view_mode == ViewMode.TEXT_ONLY:
+            self._update_scrollbars()
+        self.viewport().update()
+
     def _apply_style(self):
         self.viewport().setStyleSheet(f"background-color: {self._colors['bg'].name()};")
 
@@ -178,6 +185,83 @@ class HugeTextWidget(QAbstractScrollArea):
         if needed_width > current_digits_width:
             self._update_metrics()
 
+    def _get_chars_per_line(self):
+        """计算每行能显示的字符数（考虑边距）"""
+        viewport_w = self.viewport().width()
+        available_width = viewport_w - self._line_num_area_width - 10  # 减去左侧区域和右边距
+        if available_width <= 0:
+            return 1
+        return max(1, int(available_width / self._char_width))
+
+    def _get_wrapped_lines(self, text):
+        """将文本按可用宽度分割成多行，返回行列表"""
+        if not text:
+            return ['']
+        chars_per_line = self._get_chars_per_line()
+        if chars_per_line >= len(text):
+            return [text]
+        
+        wrapped = []
+        for i in range(0, len(text), chars_per_line):
+            wrapped.append(text[i:i + chars_per_line])
+        return wrapped
+
+    def _get_display_line_count(self, line_idx):
+        """获取指定原始行的显示行数（考虑换行）"""
+        if line_idx < 0 or line_idx >= len(self._lines):
+            return 0
+        text = self._lines[line_idx]
+        chars_per_line = self._get_chars_per_line()
+        if chars_per_line <= 0:
+            return 1
+        return max(1, math.ceil(len(text) / chars_per_line))
+
+    def _get_total_display_lines(self):
+        """获取总显示行数（所有原始行换行后的总行数）"""
+        total = 0
+        for i in range(len(self._lines)):
+            total += self._get_display_line_count(i)
+        return total
+
+    def _display_row_to_source_row_col(self, display_row):
+        """将显示行号映射到原始行号和列号"""
+        current_display = 0
+        for src_row in range(len(self._lines)):
+            display_count = self._get_display_line_count(src_row)
+            if current_display + display_count > display_row:
+                # 在这一行的某个显示行中
+                wrapped_lines = self._get_wrapped_lines(self._lines[src_row])
+                local_display = display_row - current_display
+                if local_display < len(wrapped_lines):
+                    chars_per_line = self._get_chars_per_line()
+                    col = local_display * chars_per_line
+                    return (src_row, col)
+                else:
+                    # 在最后一行，返回行尾
+                    return (src_row, len(self._lines[src_row]))
+            current_display += display_count
+        # 超出范围，返回最后一行
+        if self._lines:
+            return (len(self._lines) - 1, len(self._lines[-1]))
+        return (0, 0)
+
+    def _source_row_col_to_display_row(self, src_row, col):
+        """将原始行号和列号映射到显示行号"""
+        if src_row < 0 or src_row >= len(self._lines):
+            return 0
+        
+        # 计算之前所有原始行的显示行数
+        display_row = 0
+        for i in range(src_row):
+            display_row += self._get_display_line_count(i)
+        
+        # 计算在当前行的哪个显示行
+        chars_per_line = self._get_chars_per_line()
+        if chars_per_line > 0:
+            display_row += col // chars_per_line
+        
+        return display_row
+
     # ===========================
     # 渲染逻辑
     # ===========================
@@ -197,9 +281,9 @@ class HugeTextWidget(QAbstractScrollArea):
         viewport_h = self.viewport().height()
         viewport_w = self.viewport().width() + abs(x_offset)
         
-        first_row = self.verticalScrollBar().value()
+        first_display_row = self.verticalScrollBar().value()
         rows_visible = math.ceil(viewport_h / self._line_height) + 1
-        last_row = min(first_row + rows_visible, len(self._lines))
+        last_display_row = first_display_row + rows_visible
         
         # 1. 绘制左侧背景 (包含时间戳区域 + 行号区域)
         painter.translate(-x_offset, 0) 
@@ -207,53 +291,106 @@ class HugeTextWidget(QAbstractScrollArea):
         painter.translate(x_offset, 0) 
         
         sel_start, sel_end = self._get_normalized_selection()
-
-        for row in range(first_row, last_row):
-            line_text = self._lines[row]
-            draw_y = (row - first_row) * self._line_height
+        
+        # 遍历所有原始行，找出需要绘制的显示行
+        current_display_row = 0
+        for src_row in range(len(self._lines)):
+            line_text = self._lines[src_row]
+            wrapped_lines = self._get_wrapped_lines(line_text)
+            display_count = len(wrapped_lines)
             
-            # 高亮与选中背景
-            if row == self._current_line_index:
-                painter.fillRect(self._line_num_area_width, draw_y, viewport_w, self._line_height, self._colors['highlight'])
-            if sel_start and sel_end:
-                if sel_start[0] <= row <= sel_end[0]:
-                    s_char = sel_start[1] if row == sel_start[0] else 0
-                    e_char = sel_end[1] if row == sel_end[0] else len(line_text) + 1
-                    if e_char > s_char:
-                        sel_x = self._line_num_area_width + 5 + (s_char * self._char_width)
-                        sel_w = (e_char - s_char) * self._char_width
-                        painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
+            for wrap_idx, wrapped_text in enumerate(wrapped_lines):
+                display_row = current_display_row + wrap_idx
+                
+                # 只绘制可见范围内的行
+                if display_row < first_display_row:
+                    continue
+                if display_row >= last_display_row:
+                    break
+                
+                draw_y = (display_row - first_display_row) * self._line_height
+                is_first_wrap_line = (wrap_idx == 0)
+                
+                # 高亮当前行（只有原始行的第一行显示高亮）
+                if src_row == self._current_line_index and is_first_wrap_line:
+                    painter.fillRect(self._line_num_area_width, draw_y, viewport_w, self._line_height, self._colors['highlight'])
+                
+                # 绘制选择背景
+                if sel_start and sel_end:
+                    if sel_start[0] <= src_row <= sel_end[0]:
+                        chars_per_line = self._get_chars_per_line()
+                        start_char_in_line = wrap_idx * chars_per_line
+                        end_char_in_line = min(start_char_in_line + len(wrapped_text), len(line_text))
+                        
+                        # 计算选择范围在这一行的部分
+                        if src_row == sel_start[0] and src_row == sel_end[0]:
+                            # 同一行的选择
+                            sel_start_char = max(start_char_in_line, sel_start[1])
+                            sel_end_char = min(end_char_in_line, sel_end[1])
+                            if sel_end_char > sel_start_char:
+                                sel_x = self._line_num_area_width + 5 + ((sel_start_char - start_char_in_line) * self._char_width)
+                                sel_w = (sel_end_char - sel_start_char) * self._char_width
+                                painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
+                        elif src_row == sel_start[0]:
+                            # 选择开始行
+                            sel_start_char = max(start_char_in_line, sel_start[1])
+                            if sel_start_char < end_char_in_line:
+                                sel_x = self._line_num_area_width + 5 + ((sel_start_char - start_char_in_line) * self._char_width)
+                                sel_w = (end_char_in_line - sel_start_char) * self._char_width
+                                painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
+                        elif src_row == sel_end[0]:
+                            # 选择结束行
+                            sel_end_char = min(end_char_in_line, sel_end[1])
+                            if sel_end_char > start_char_in_line:
+                                sel_x = self._line_num_area_width + 5
+                                sel_w = (sel_end_char - start_char_in_line) * self._char_width
+                                painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
+                        elif sel_start[0] < src_row < sel_end[0]:
+                            # 中间行，全选
+                            sel_x = self._line_num_area_width + 5
+                            sel_w = len(wrapped_text) * self._char_width
+                            painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
 
-            # --- 绘制左侧区域 (固定不动) ---
-            painter.translate(-x_offset, 0)
+                # --- 绘制左侧区域 (固定不动) ---
+                painter.translate(-x_offset, 0)
+                
+                # A. 绘制时间戳 (只有第一行显示)
+                if is_first_wrap_line and self._show_timestamp and src_row < len(self._line_timestamps):
+                    ts = self._line_timestamps[src_row]
+                    if ts > 0:
+                        # 格式化时间 HH:MM:SS.mmm
+                        dt = datetime.fromtimestamp(ts)
+                        time_str = dt.strftime("%H:%M:%S") + f".{int(ts*1000)%1000:03d}"
+                        
+                        painter.setPen(self._colors['timestamp_text'])
+                        # 左对齐显示在最左边
+                        painter.drawText(5, draw_y, self._timestamp_width, self._line_height, 
+                                         Qt.AlignLeft | Qt.AlignVCenter, time_str)
+
+                # B. 绘制行号（第一行显示行号，后续行显示"-"）
+                painter.setPen(self._colors['line_num_text'])
+                if is_first_wrap_line:
+                    # 第一行显示行号
+                    line_num_str = str(src_row + 1)
+                else:
+                    # 换行显示"-"
+                    line_num_str = "-"
+                
+                painter.drawText(0, draw_y, self._line_num_area_width - 5, self._line_height, 
+                                 Qt.AlignRight | Qt.AlignVCenter, line_num_str)
+                
+                painter.translate(x_offset, 0)
+                # --- 左侧绘制结束 ---
+
+                # C. 绘制文本内容
+                painter.setPen(self._colors['text'])
+                painter.drawText(self._line_num_area_width + 5, draw_y, 
+                                 viewport_w, self._line_height, 
+                                 Qt.AlignLeft | Qt.AlignVCenter, wrapped_text)
             
-            # A. 绘制时间戳 (如果开启)
-            if self._show_timestamp and row < len(self._line_timestamps):
-                ts = self._line_timestamps[row]
-                if ts > 0:
-                    # 格式化时间 HH:MM:SS.mmm
-                    dt = datetime.fromtimestamp(ts)
-                    time_str = dt.strftime("%H:%M:%S") + f".{int(ts*1000)%1000:03d}"
-                    
-                    painter.setPen(self._colors['timestamp_text'])
-                    # 左对齐显示在最左边
-                    painter.drawText(5, draw_y, self._timestamp_width, self._line_height, 
-                                     Qt.AlignLeft | Qt.AlignVCenter, time_str)
-
-            # B. 绘制行号
-            painter.setPen(self._colors['line_num_text'])
-            # 行号绘制在整个 Margin 的最右侧
-            painter.drawText(0, draw_y, self._line_num_area_width - 5, self._line_height, 
-                             Qt.AlignRight | Qt.AlignVCenter, str(row + 1))
-            
-            painter.translate(x_offset, 0)
-            # --- 左侧绘制结束 ---
-
-            # C. 绘制文本内容
-            painter.setPen(self._colors['text'])
-            painter.drawText(self._line_num_area_width + 5, draw_y, 
-                             viewport_w, self._line_height, 
-                             Qt.AlignLeft | Qt.AlignVCenter, line_text)
+            current_display_row += display_count
+            if current_display_row >= last_display_row:
+                break
 
     # _paint_hex_stream 保持不变，但需要适配 _line_num_area_width 的变化
     def _paint_hex_stream(self, painter, x_offset):
@@ -332,7 +469,6 @@ class HugeTextWidget(QAbstractScrollArea):
         self.viewport().update()
 
     def _update_scrollbars(self):
-        # ... (同上一个版本，保持不变) ...
         viewport_h = self.viewport().height()
         line_h = max(1, self._line_height)
         rows_per_page = viewport_h // line_h
@@ -342,16 +478,23 @@ class HugeTextWidget(QAbstractScrollArea):
             chars = 12 + (self._bytes_per_line * 3) + 3 + self._bytes_per_line
             content_width = chars * self._char_width + 40 # Hex模式简易宽
         else:
-            total_rows = len(self._lines)
-            content_width = self.viewport().width() # Text模式
+            # Text模式：使用显示行数（考虑换行）
+            total_rows = self._get_total_display_lines()
+            # 文本模式下，由于自动换行，不需要水平滚动条
+            content_width = self.viewport().width()
             
         v_max = max(0, total_rows - rows_per_page)
         self.verticalScrollBar().setRange(0, v_max)
         self.verticalScrollBar().setPageStep(rows_per_page)
         
-        h_max = max(0, content_width - self.viewport().width())
-        self.horizontalScrollBar().setRange(0, int(h_max))
-        self.horizontalScrollBar().setPageStep(self.viewport().width())
+        # 文本模式下禁用水平滚动条（因为自动换行）
+        if self._view_mode == ViewMode.TEXT_ONLY:
+            self.horizontalScrollBar().setRange(0, 0)
+            self.horizontalScrollBar().setPageStep(self.viewport().width())
+        else:
+            h_max = max(0, content_width - self.viewport().width())
+            self.horizontalScrollBar().setRange(0, int(h_max))
+            self.horizontalScrollBar().setPageStep(self.viewport().width())
 
     def clear(self):
         self._lines = []
@@ -405,14 +548,38 @@ class HugeTextWidget(QAbstractScrollArea):
     def _map_point_to_pos(self, point: QPoint):
         y = point.y()
         x = point.x() + self.horizontalScrollBar().value()
-        row = self.verticalScrollBar().value() + (y // self._line_height)
-        row = max(0, min(row, len(self._lines) - 1))
-        # 减去行号区域(包含时间戳)
-        rel_x = x - self._line_num_area_width
-        col = max(0, round(rel_x / self._char_width))
-        if 0 <= row < len(self._lines):
-            col = min(col, len(self._lines[row]))
-        return (row, col)
+        
+        # 计算显示行号
+        display_row = self.verticalScrollBar().value() + (y // self._line_height)
+        
+        # 将显示行映射到原始行和列
+        src_row, base_col = self._display_row_to_source_row_col(display_row)
+        
+        # 计算在该显示行的列偏移
+        chars_per_line = self._get_chars_per_line()
+        if chars_per_line > 0:
+            # 找到该显示行在原始行中的起始位置
+            wrapped_lines = self._get_wrapped_lines(self._lines[src_row] if src_row < len(self._lines) else "")
+            current_display = 0
+            for i in range(src_row):
+                current_display += self._get_display_line_count(i)
+            local_display = display_row - current_display
+            
+            # 减去行号区域(包含时间戳)
+            rel_x = x - self._line_num_area_width - 5
+            col_offset = max(0, int(rel_x / self._char_width))
+            
+            # 计算原始列号
+            col = local_display * chars_per_line + col_offset
+        else:
+            rel_x = x - self._line_num_area_width - 5
+            col = max(0, round(rel_x / self._char_width))
+        
+        if 0 <= src_row < len(self._lines):
+            col = min(col, len(self._lines[src_row]))
+            col = max(0, col)
+        
+        return (src_row, col)
 
     def _get_normalized_selection(self):
         if not self._sel_start_pos or not self._sel_end_pos: return None, None
@@ -449,11 +616,13 @@ class HugeTextWidget(QAbstractScrollArea):
         self.viewport().update()
 
     def goto_line(self, line_no):
-        """跳转到指定行"""
+        """跳转到指定行（原始行号）"""
         line_idx = line_no - 1
         if 0 <= line_idx < len(self._lines):
             self._current_line_index = line_idx
-            self.verticalScrollBar().setValue(line_idx)
+            # 将原始行号转换为显示行号
+            display_row = self._source_row_col_to_display_row(line_idx, 0)
+            self.verticalScrollBar().setValue(display_row)
             self.viewport().update()
             return True
         return False
