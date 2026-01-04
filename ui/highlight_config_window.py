@@ -353,6 +353,11 @@ class HighlightConfigWindow(QDialog):
                 'keyword': r'(?i)\bsuccess\b',  # 忽略大小写
                 'use_regex': True,
                 'text_color': '#4EC9B0'  # 青色文字，无背景
+            },
+            {
+                'keyword': r'\b\d+\.?\d*\b',  # 匹配数字（整数和小数）
+                'use_regex': True,
+                'text_color': '#B5CEA8'  # 浅绿色文字，无背景
             }
         ]
         
