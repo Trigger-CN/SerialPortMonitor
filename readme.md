@@ -59,6 +59,10 @@
   - 支持自定义保存路径
   - 保存完整原始数据（不受显示行数限制）
   - 断开连接时自动保存
+- **自动更新检查**：支持从GitHub Releases检查新版本
+  - 在首选项窗口中点击"检查更新"按钮
+  - 自动获取最新版本信息和更新说明
+  - 一键跳转到下载页面
 
 ### ⚡ 性能优化
 
@@ -240,6 +244,10 @@ pyinstaller main.spec
 
 #### 应用信息
 - 显示作者、版本号、邮箱、GitHub链接等信息
+- **检查更新**：点击"🔄 检查更新"按钮可检查是否有新版本可用
+  - 如果有新版本，会显示更新对话框，包含版本信息和更新说明
+  - 点击"前往下载"按钮可在浏览器中打开下载页面
+  - 如果没有新版本，会提示"您已使用最新版本"
 
 ### 7. 日志保存
 
@@ -337,6 +345,7 @@ serialdial/
 │   ├── preference_window.py # 首选项窗口
 │   ├── highlight_config_window.py # 高亮配置窗口
 │   ├── log_window.py        # 日志窗口
+│   ├── update_dialog.py     # 更新对话框
 │   ├── long_text_widget.py  # 长文本显示组件（懒加载）
 │   ├── lazy_text_edit.py    # 懒加载文本编辑器
 │   └── widgets.py           # 自定义UI组件
@@ -345,7 +354,8 @@ serialdial/
 │   ├── config_handler.py   # 配置处理器
 │   ├── data_cache.py       # 数据缓存管理器
 │   ├── data_processor.py   # 数据处理器
-│   └── file_handler.py     # 文件处理器
+│   ├── file_handler.py     # 文件处理器
+│   └── update_checker.py   # 更新检查器
 │
 ├── styles/               # 样式模块
 │   └── vs_code_theme.py   # VSCode风格主题
@@ -393,6 +403,12 @@ serialdial/
 - Windows 7/8/10/11
 - Linux（需要安装PyQt5）
 - macOS（需要安装PyQt5）
+
+### Q6: 如何检查更新？
+- 打开"设置首选项"窗口
+- 在"应用信息"部分点击"🔄 检查更新"按钮
+- 程序会自动从GitHub Releases获取最新版本信息
+- 如果有新版本，会显示更新对话框，可以点击"前往下载"按钮下载新版本
 
 ---
 

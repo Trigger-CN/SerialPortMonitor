@@ -5,9 +5,11 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, QFontCom
 from PyQt5.QtCore import Qt, QPoint
 from styles.vs_code_theme import VSCodeTheme
 from utils.config_handler import ConfigHandler
+from utils.update_checker import UpdateChecker
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
                        StyledLineEdit, StyledCheckBox, 
                        StyledGroupBox)
+from ui.update_dialog import UpdateDialog
 import version
 
 class PreferenceWindow(QDialog):
@@ -19,8 +21,10 @@ class PreferenceWindow(QDialog):
         self.resize(450, 550)
         self.text_color = VSCodeTheme.FOREGROUND
         self.bg_color = VSCodeTheme.BACKGROUND_LIGHT
+        self.update_checker = UpdateChecker()
         self.init_ui()
         self.load_config()
+        self.init_update_checker()
 
     def init_ui(self):
         """初始化UI"""
@@ -137,6 +141,14 @@ class PreferenceWindow(QDialog):
         github_layout.addStretch()
         info_layout.addLayout(github_layout)
         
+        # 更新检查按钮
+        update_layout = QHBoxLayout()
+        self.update_check_btn = StyledButton("🔄 检查更新")
+        self.update_check_btn.clicked.connect(self.check_for_updates)
+        update_layout.addWidget(self.update_check_btn)
+        update_layout.addStretch()
+        info_layout.addLayout(update_layout)
+        
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
         
@@ -220,3 +232,34 @@ class PreferenceWindow(QDialog):
         color = QColorDialog.getColor(Qt.black, self, "Select Background Color")
         if color.isValid():
             self.bg_color = color.name()
+    
+    def init_update_checker(self):
+        """初始化更新检查器"""
+        self.update_checker.update_available.connect(self.on_update_available)
+        self.update_checker.no_update.connect(self.on_no_update)
+        self.update_checker.check_failed.connect(self.on_check_failed)
+    
+    def check_for_updates(self):
+        """检查更新"""
+        self.update_check_btn.setEnabled(False)
+        self.update_check_btn.setText("🔄 检查中...")
+        self.update_checker.check_for_updates()
+    
+    def on_update_available(self, latest_version: str, download_url: str, release_notes: str):
+        """有更新可用"""
+        self.update_check_btn.setEnabled(True)
+        self.update_check_btn.setText("🔄 检查更新")
+        dialog = UpdateDialog(latest_version, download_url, release_notes, self)
+        dialog.exec_()
+    
+    def on_no_update(self):
+        """无更新"""
+        self.update_check_btn.setEnabled(True)
+        self.update_check_btn.setText("🔄 检查更新")
+        QMessageBox.information(self, "检查更新", "您已使用最新版本！")
+    
+    def on_check_failed(self, error_msg: str):
+        """检查失败"""
+        self.update_check_btn.setEnabled(True)
+        self.update_check_btn.setText("🔄 检查更新")
+        QMessageBox.warning(self, "检查更新失败", f"无法检查更新：\n{error_msg}")
