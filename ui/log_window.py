@@ -124,6 +124,10 @@ class LogWindow(QMainWindow):
         """设置高亮规则"""
         self.normal_display.set_highlight_rules(rules)
     
+    def set_highlight_enabled(self, enabled):
+        """设置高亮使能状态"""
+        self.normal_display.set_highlight_enabled(enabled)
+    
     def set_show_timestamp(self, show: bool):
         """设置是否显示时间戳"""
         self.normal_display.set_show_timestamp(show)

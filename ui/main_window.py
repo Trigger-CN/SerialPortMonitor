@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         self.refresh_ports()
         # 初始化高亮规则
         self._current_highlight_rules = []
+        self._highlight_enabled = True  # 高亮使能状态
         # 多窗口管理
         self.log_windows = []  # 存储所有日志窗口
         self._window_counter = 0  # 窗口计数器
@@ -144,16 +145,28 @@ class MainWindow(QMainWindow):
         current_rules = getattr(self, '_current_highlight_rules', [])
         self.highlight_config_window.set_rules(current_rules)
         
+        # 加载当前的高亮使能状态
+        highlight_enabled = getattr(self, '_highlight_enabled', True)
+        self.highlight_config_window.set_highlight_enabled(highlight_enabled)
+        
         # 显示窗口
         if self.highlight_config_window.exec_() == QDialog.Accepted:
             # 获取规则并应用
             rules = self.highlight_config_window.get_rules()
             self._current_highlight_rules = rules
             self.normal_display.set_highlight_rules(rules)
-            # 同步高亮规则到所有日志窗口
+            
+            # 获取高亮使能状态并应用
+            highlight_enabled = self.highlight_config_window.is_highlight_enabled()
+            self._highlight_enabled = highlight_enabled
+            self.normal_display.set_highlight_enabled(highlight_enabled)
+            
+            # 同步高亮规则和使能状态到所有日志窗口
             for log_window in self.log_windows:
                 if log_window and log_window.isVisible():
                     log_window.set_highlight_rules(rules)
+                    log_window.set_highlight_enabled(highlight_enabled)
+            
             # 保存配置到文件
             self.save_config()
 
@@ -446,6 +459,13 @@ class MainWindow(QMainWindow):
                 highlight_rules = config['highlight_rules']
                 self._current_highlight_rules = highlight_rules if highlight_rules else []
                 self.normal_display.set_highlight_rules(self._current_highlight_rules)
+            
+            # 加载高亮使能状态
+            if 'highlight_enabled' in config:
+                self._highlight_enabled = config['highlight_enabled']
+            else:
+                self._highlight_enabled = True  # 默认启用
+            self.normal_display.set_highlight_enabled(self._highlight_enabled)
 
         except Exception as e:
             self.status_label.setText(f"❌ 加载配置失败: {str(e)}")
@@ -470,7 +490,8 @@ class MainWindow(QMainWindow):
             'font_color': self.prefs_window.text_color or VSCodeTheme.FOREGROUND,
             'bg_color': self.prefs_window.bg_color or VSCodeTheme.BACKGROUND_LIGHT,
             'max_lines': max_lines,
-            'highlight_rules': getattr(self, '_current_highlight_rules', [])
+            'highlight_rules': getattr(self, '_current_highlight_rules', []),
+            'highlight_enabled': getattr(self, '_highlight_enabled', True)
         }
         
         try:
@@ -780,8 +801,9 @@ class MainWindow(QMainWindow):
         log_window.set_show_timestamp(self.timestamp.isChecked())
         log_window.set_auto_scroll(self.auto_scroll.isChecked())
         
-        # 应用当前的高亮规则
+        # 应用当前的高亮规则和使能状态
         log_window.set_highlight_rules(self._current_highlight_rules)
+        log_window.set_highlight_enabled(getattr(self, '_highlight_enabled', True))
         
         # 同步历史数据到新窗口（可选：如果希望新窗口也显示历史数据）
         # 注意：由于新窗口有自己的过滤，历史数据会经过过滤后才显示

@@ -51,6 +51,7 @@ class HugeTextWidget(QAbstractScrollArea):
         
         # --- 高亮规则 ---
         self._highlight_rules = []  # 存储高亮规则列表
+        self._highlight_enabled = True  # 高亮使能开关
         
         # --- 过滤功能 ---
         self._filter_pattern = None  # 正则表达式模式对象
@@ -766,38 +767,81 @@ class HugeTextWidget(QAbstractScrollArea):
                 # 获取原始行的完整文本用于匹配
                 full_line_text = line_text
                 
-                # 绘制高亮背景
-                if self._highlight_rules and full_line_text:
+                # 绘制高亮背景和文本（分段绘制以支持不同颜色）
+                if self._highlight_enabled and self._highlight_rules and full_line_text:
                     # 查找匹配位置（相对于原始行的位置，使用缓存）
                     # 使用实际行号（考虑偏移量）作为缓存键
                     actual_line_idx = src_row + self._line_offset
                     matches = self._find_highlight_matches(full_line_text, line_idx=actual_line_idx)
                     
-                    for match_start, match_end, match_color in matches:
-                        # 检查匹配是否在当前显示行范围内
-                        if match_end <= start_char_offset or match_start >= end_char_offset:
-                            continue
-                        
-                        # 计算在当前显示行中的位置
-                        display_match_start = max(0, match_start - start_char_offset)
-                        display_match_end = min(len(wrapped_text), match_end - start_char_offset)
-                        
-                        if display_match_end > display_match_start:
-                            # 使用QFontMetrics计算实际文本宽度（正确处理全角/半角字符）
-                            text_before_match = wrapped_text[:display_match_start]
-                            matched_text = wrapped_text[display_match_start:display_match_end]
+                    # 如果没有匹配，直接绘制整行文本
+                    if not matches:
+                        painter.setPen(self._colors['text'])
+                        painter.drawText(text_x, draw_y, 
+                                         viewport_w, self._line_height, 
+                                         Qt.AlignLeft | Qt.AlignVCenter, wrapped_text)
+                    else:
+                        # 分段绘制文本，支持不同颜色
+                        current_pos = 0
+                        for match_start, match_end, bg_color, text_color in matches:
+                            # 检查匹配是否在当前显示行范围内
+                            if match_end <= start_char_offset or match_start >= end_char_offset:
+                                continue
                             
-                            # 计算匹配文本的起始X位置和宽度
-                            highlight_x = text_x + self._font_metrics.width(text_before_match)
-                            highlight_w = self._font_metrics.width(matched_text)
+                            # 计算在当前显示行中的位置
+                            display_match_start = max(0, match_start - start_char_offset)
+                            display_match_end = min(len(wrapped_text), match_end - start_char_offset)
                             
-                            painter.fillRect(highlight_x, draw_y, highlight_w, self._line_height, match_color)
-                
-                # 绘制文本内容（在高亮背景之上）
-                painter.setPen(self._colors['text'])
-                painter.drawText(text_x, draw_y, 
-                                 viewport_w, self._line_height, 
-                                 Qt.AlignLeft | Qt.AlignVCenter, wrapped_text)
+                            if display_match_end > display_match_start:
+                                # 绘制匹配前的文本（如果有）
+                                if display_match_start > current_pos:
+                                    text_before = wrapped_text[current_pos:display_match_start]
+                                    if text_before:
+                                        painter.setPen(self._colors['text'])
+                                        x_before = text_x + self._font_metrics.width(wrapped_text[:current_pos])
+                                        painter.drawText(x_before, draw_y, 
+                                                         viewport_w, self._line_height, 
+                                                         Qt.AlignLeft | Qt.AlignVCenter, text_before)
+                                
+                                # 绘制高亮背景（使用指定的背景色或全局文本背景色）
+                                text_before_match = wrapped_text[:display_match_start]
+                                matched_text = wrapped_text[display_match_start:display_match_end]
+                                highlight_x = text_x + self._font_metrics.width(text_before_match)
+                                highlight_w = self._font_metrics.width(matched_text)
+                                
+                                # 如果指定了背景色，使用指定的；否则使用全局文本背景色
+                                if bg_color:
+                                    painter.fillRect(highlight_x, draw_y, highlight_w, self._line_height, bg_color)
+                                else:
+                                    # 使用全局文本背景色
+                                    painter.fillRect(highlight_x, draw_y, highlight_w, self._line_height, self._colors['bg'])
+                                
+                                # 绘制高亮文本（使用指定的字体颜色或默认颜色）
+                                if text_color:
+                                    painter.setPen(text_color)
+                                else:
+                                    painter.setPen(self._colors['text'])
+                                painter.drawText(highlight_x, draw_y, 
+                                                 highlight_w, self._line_height, 
+                                                 Qt.AlignLeft | Qt.AlignVCenter, matched_text)
+                                
+                                current_pos = display_match_end
+                        
+                        # 绘制剩余的文本（如果有）
+                        if current_pos < len(wrapped_text):
+                            text_after = wrapped_text[current_pos:]
+                            if text_after:
+                                painter.setPen(self._colors['text'])
+                                x_after = text_x + self._font_metrics.width(wrapped_text[:current_pos])
+                                painter.drawText(x_after, draw_y, 
+                                                 viewport_w, self._line_height, 
+                                                 Qt.AlignLeft | Qt.AlignVCenter, text_after)
+                else:
+                    # 没有高亮规则，直接绘制文本
+                    painter.setPen(self._colors['text'])
+                    painter.drawText(text_x, draw_y, 
+                                     viewport_w, self._line_height, 
+                                     Qt.AlignLeft | Qt.AlignVCenter, wrapped_text)
             
             current_display_row += display_count
             if current_display_row >= last_display_row:
@@ -868,13 +912,30 @@ class HugeTextWidget(QAbstractScrollArea):
                 {
                     'keyword': str,      # 关键字
                     'use_regex': bool,   # 是否使用正则表达式
-                    'color': str         # 颜色（如 '#FFFF00'）
+                    'bg_color': str,     # 背景颜色（如 '#FFFF00'）
+                    'text_color': str     # 字体颜色（可选）
                 }
         """
         self._highlight_rules = rules if rules else []
         # 清除高亮缓存
         self._highlight_cache.clear()
         self.viewport().update()
+    
+    def set_highlight_enabled(self, enabled):
+        """
+        设置高亮使能状态
+        
+        Args:
+            enabled: 是否启用高亮
+        """
+        self._highlight_enabled = enabled
+        # 清除高亮缓存
+        self._highlight_cache.clear()
+        self.viewport().update()
+    
+    def is_highlight_enabled(self):
+        """获取高亮使能状态"""
+        return self._highlight_enabled
     
     def clear_highlight_rules(self):
         """清空所有高亮规则"""
@@ -892,7 +953,7 @@ class HugeTextWidget(QAbstractScrollArea):
             line_idx: 行索引（用于缓存，可选，实际行号，已考虑偏移量）
         
         Returns:
-            list: 匹配位置列表，每个元素为 (start, end, color)
+            list: 匹配位置列表，每个元素为 (start, end, bg_color, text_color)
         """
         matches = []
         if not text or not self._highlight_rules:
@@ -908,16 +969,29 @@ class HugeTextWidget(QAbstractScrollArea):
                 continue
             
             use_regex = rule.get('use_regex', False)
-            color = QColor(rule.get('color', '#FFFF00'))
-            if not color.isValid():
-                color = QColor('#FFFF00')
+            
+            # 获取背景颜色（可选，兼容旧格式）
+            bg_color = None
+            bg_color_name = rule.get('bg_color', rule.get('color'))
+            if bg_color_name:
+                bg_color = QColor(bg_color_name)
+                if not bg_color.isValid():
+                    bg_color = None
+            
+            # 获取字体颜色（可选）
+            text_color_name = rule.get('text_color')
+            text_color = None
+            if text_color_name:
+                text_color = QColor(text_color_name)
+                if not text_color.isValid():
+                    text_color = None
             
             try:
                 if use_regex:
                     # 使用正则表达式
                     pattern = re.compile(keyword)
                     for match in pattern.finditer(text):
-                        matches.append((match.start(), match.end(), color))
+                        matches.append((match.start(), match.end(), bg_color, text_color))
                 else:
                     # 普通字符串匹配
                     start = 0
@@ -925,7 +999,7 @@ class HugeTextWidget(QAbstractScrollArea):
                         pos = text.find(keyword, start)
                         if pos == -1:
                             break
-                        matches.append((pos, pos + len(keyword), color))
+                        matches.append((pos, pos + len(keyword), bg_color, text_color))
                         start = pos + 1
             except (re.error, Exception):
                 # 如果正则表达式错误，跳过这条规则
