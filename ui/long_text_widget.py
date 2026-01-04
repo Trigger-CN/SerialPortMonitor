@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QAbstractScrollArea,
                              QVBoxLayout, QWidget, QPushButton, QHBoxLayout, 
                              QComboBox, QCheckBox, QMessageBox, 
                              QFontComboBox, QSpinBox, QColorDialog, QGroupBox, QLabel)
-from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtCore import Qt, QPoint, QTimer
 from PyQt5.QtGui import (QPainter, QFont, QColor, QFontMetrics, QKeySequence, 
                          QClipboard, QGuiApplication)
 
@@ -23,12 +23,21 @@ class HugeTextWidget(QAbstractScrollArea):
         # --- 核心配置 ---
         self._bytes_per_line = 32 
         self._encoding = 'utf-8'
+        self._max_lines = 50000  # 最大显示行数（默认50000）
+        self._trim_threshold = 0.1  # 删除阈值：超过限制10%时才删除
         
         # --- 数据存储 ---
-        self._lines = []           # 文本内容
+        self._lines = []           # 文本内容（用于显示，受_max_lines限制）
         self._current_line_index = -1 
         self._line_timestamps = [] # 时间戳 (float time.time())
-        self._raw_bytes = b""      # 原始字节
+        self._raw_bytes = b""      # 原始字节（完整数据，用于日志保存，不受限制）
+        self._line_offset = 0      # 行号偏移量（用于缓存索引，避免重新索引所有缓存）
+        
+        # --- 性能优化：批量更新 ---
+        self._pending_update = False  # 是否有待更新的UI
+        self._update_timer = QTimer(self)
+        self._update_timer.setSingleShot(True)
+        self._update_timer.timeout.connect(self._do_pending_update)
         
         # --- 状态开关 ---
         self._view_mode = ViewMode.TEXT_ONLY
@@ -47,10 +56,18 @@ class HugeTextWidget(QAbstractScrollArea):
         self._filter_pattern = None  # 正则表达式模式对象
         self._filter_enabled = False  # 是否启用过滤
         self._filter_regex_str = ""  # 原始正则表达式字符串
+        self._filter_cache = {}  # 过滤结果缓存: {line_idx: bool}
         
         # --- 性能优化：换行结果缓存 ---
         self._wrapped_lines_cache = {}  # 缓存换行结果: {(line_idx, available_width): wrapped_lines}
         self._cached_available_width = None  # 缓存时的可用宽度
+        
+        # --- 性能优化：高亮匹配缓存 ---
+        self._highlight_cache = {}  # 高亮匹配缓存: {line_idx: [(start, end, color), ...]}
+        
+        # --- 性能优化：总显示行数缓存 ---
+        self._cached_total_display_lines = 0  # 缓存的总显示行数
+        self._total_display_lines_dirty = True  # 标记是否需要重新计算
         
         # --- 样式定义 ---
         self._colors = {
@@ -129,6 +146,8 @@ class HugeTextWidget(QAbstractScrollArea):
     def _clear_wrapped_cache(self):
         """清除换行缓存"""
         self._wrapped_lines_cache.clear()
+        # 换行缓存清除时，总显示行数可能改变（因为换行结果可能不同）
+        self._invalidate_total_display_lines_cache()
 
     # ===========================
     # API: 核心功能
@@ -137,6 +156,156 @@ class HugeTextWidget(QAbstractScrollArea):
         """开启/关闭时间戳显示"""
         self._show_timestamp = show
         self._update_metrics() # 重新计算布局宽度
+    
+    def set_max_lines(self, max_lines: int):
+        """设置最大显示行数"""
+        if max_lines < 1:
+            max_lines = 1
+        self._max_lines = max_lines
+        # 如果当前行数超过限制，删除最旧的行
+        # 获取当前滚动状态
+        scrollbar = self.verticalScrollBar()
+        old_max = scrollbar.maximum()
+        was_at_bottom = scrollbar.value() >= (old_max - 1) if old_max > 0 else True
+        self._trim_lines_if_needed(was_at_bottom=was_at_bottom)
+    
+    def get_max_lines(self) -> int:
+        """获取最大显示行数"""
+        return self._max_lines
+    
+    def _trim_lines_if_needed(self, was_at_bottom=None):
+        """如果行数超过限制，删除最旧的行（但保留_raw_bytes完整数据）
+        优化：只删除被删除行的缓存，而不是清空所有缓存
+        
+        Args:
+            was_at_bottom: 删除前是否在底部（用于保持滚动位置）
+        """
+        if len(self._lines) <= self._max_lines:
+            return
+        
+        # 计算需要删除的行数
+        # 优化：当超过限制时，删除到目标行数（留出10%缓冲），减少频繁触发
+        excess = len(self._lines) - self._max_lines
+        # 删除超出部分 + 额外删除一些作为缓冲（至少删除10%或100行）
+        buffer_size = max(int(self._max_lines * self._trim_threshold), 100)
+        delete_count = excess + buffer_size  # 删除超出部分 + 缓冲，留出空间
+        
+        # 保存当前滚动位置和状态
+        scrollbar = self.verticalScrollBar()
+        old_scroll_value = scrollbar.value()
+        old_max = scrollbar.maximum()
+        if was_at_bottom is None:
+            was_at_bottom = old_scroll_value >= (old_max - 1) if old_max > 0 else True
+        
+        # 更新当前行索引（如果指向被删除的行，重置为-1）
+        if self._current_line_index >= 0 and self._current_line_index < delete_count:
+            self._current_line_index = -1
+        elif self._current_line_index >= delete_count:
+            self._current_line_index -= delete_count
+        
+        # 更新选择状态（如果选择的行被删除，清除选择）
+        if self._sel_start_pos:
+            start_row, start_col = self._sel_start_pos
+            if start_row < delete_count:
+                self._sel_start_pos = None
+                self._sel_end_pos = None
+            elif start_row >= delete_count:
+                self._sel_start_pos = (start_row - delete_count, start_col)
+        
+        if self._sel_end_pos:
+            end_row, end_col = self._sel_end_pos
+            if end_row < delete_count:
+                self._sel_start_pos = None
+                self._sel_end_pos = None
+            elif end_row >= delete_count:
+                self._sel_end_pos = (end_row - delete_count, end_col)
+        
+        # 删除最旧的行
+        self._lines = self._lines[delete_count:]
+        self._line_timestamps = self._line_timestamps[delete_count:]
+        
+        # 更新行号偏移量（避免重新索引所有缓存）
+        self._line_offset += delete_count
+        
+        # 只删除被删除行的缓存项，不需要重新索引所有缓存
+        # 这样可以避免遍历所有缓存项，大幅提升性能
+        delete_start = self._line_offset - delete_count
+        delete_end = self._line_offset
+        
+        # 删除换行缓存中被删除行的项
+        if self._wrapped_lines_cache:
+            keys_to_remove = [
+                key for key in self._wrapped_lines_cache.keys()
+                if isinstance(key, tuple) and len(key) == 2 and delete_start <= key[0] < delete_end
+            ]
+            for key in keys_to_remove:
+                del self._wrapped_lines_cache[key]
+        
+        # 删除过滤缓存中被删除行的项
+        if self._filter_cache:
+            keys_to_remove = [
+                key for key in self._filter_cache.keys()
+                if delete_start <= key < delete_end
+            ]
+            for key in keys_to_remove:
+                del self._filter_cache[key]
+        
+        # 删除高亮缓存中被删除行的项
+        if self._highlight_cache:
+            keys_to_remove = [
+                key for key in self._highlight_cache.keys()
+                if delete_start <= key < delete_end
+            ]
+            for key in keys_to_remove:
+                del self._highlight_cache[key]
+        
+        # 标记总显示行数缓存为无效（因为删除了行）
+        self._invalidate_total_display_lines_cache()
+        
+        # 取消任何待处理的延迟更新，避免与立即更新冲突
+        self._pending_update = False
+        self._update_timer.stop()
+        
+        # 更新滚动条和UI（立即更新，避免闪烁）
+        self._update_scrollbars()
+        
+        # 如果之前在底部，保持到底部；否则保持相对位置
+        if was_at_bottom or self._auto_scroll:
+            self.scroll_to_bottom()
+        else:
+            # 保持相对滚动位置
+            new_max = scrollbar.maximum()
+            if new_max > 0 and old_max > 0:
+                # 计算相对位置比例
+                ratio = old_scroll_value / old_max if old_max > 0 else 0
+                # 调整新位置（考虑删除的行数影响）
+                new_value = max(0, int(ratio * new_max))
+                scrollbar.setValue(new_value)
+        
+        # 立即更新视图，避免文本消失或闪烁
+        # 使用 QApplication.processEvents() 确保立即刷新，但可能影响性能
+        # 所以只调用 viewport().update()，让Qt在下一个事件循环中刷新
+        self.viewport().update()
+    
+    def _do_pending_update(self):
+        """执行待更新的UI刷新"""
+        if self._pending_update:
+            self._update_scrollbars()
+            self._update_line_num_width_dynamic()
+            scrollbar = self.verticalScrollBar()
+            was_at_bottom = scrollbar.value() >= (scrollbar.maximum() - 1)
+            if self._auto_scroll or was_at_bottom:
+                self.scroll_to_bottom()
+            self.viewport().update()
+            self._pending_update = False
+    
+    def _schedule_update(self):
+        """安排UI更新（批量更新，减少重绘频率）"""
+        if not self._pending_update:
+            self._pending_update = True
+            # 使用定时器延迟更新，避免频繁重绘
+            # 如果数据接收很快，定时器会不断重置，直到数据接收暂停
+            self._update_timer.start(50)  # 50ms延迟
 
     def append_raw_bytes(self, data: bytes):
         """追加数据，同时自动打标时间戳"""
@@ -188,16 +357,30 @@ class HugeTextWidget(QAbstractScrollArea):
         if len(self._line_timestamps) < len(self._lines):
             diff = len(self._lines) - len(self._line_timestamps)
             self._line_timestamps.extend([now] * diff)
-
-        self._update_scrollbars()
         
-        # 如果行数增加导致行号位数变化(99->100)，需要重新计算宽度
-        # 简单优化：每增加100行或者1000行检查一次，或者简单地每次 check
-        self._update_line_num_width_dynamic()
+        # 如果行数超过限制，删除最旧的行（但保留_raw_bytes完整数据）
+        # 优化：只在超过阈值时才检查，避免频繁检查
+        lines_trimmed = False
+        if len(self._lines) > self._max_lines * (1 + self._trim_threshold):
+            old_line_count = len(self._lines)
+            # 传递删除前的滚动状态，用于保持滚动位置
+            self._trim_lines_if_needed(was_at_bottom=was_at_bottom)
+            # 检查是否真的删除了行
+            lines_trimmed = len(self._lines) < old_line_count
         
-        if self._auto_scroll or was_at_bottom:
-            self.scroll_to_bottom()
-        self.viewport().update()
+        # 标记总显示行数缓存为无效（因为添加了新行）
+        self._invalidate_total_display_lines_cache()
+        
+        # 如果执行了删除操作，立即更新UI（避免闪烁）
+        # 否则使用批量更新机制，减少UI重绘频率
+        if lines_trimmed:
+            # 删除后已经更新了滚动条和视图（_trim_lines_if_needed 中已处理）
+            # 只需要更新行号宽度，视图已在 _trim_lines_if_needed 中更新
+            self._update_line_num_width_dynamic()
+            # 不需要再次调用 viewport().update()，避免重复更新
+        else:
+            # 使用批量更新机制，减少UI重绘频率
+            self._schedule_update()
 
     def _update_line_num_width_dynamic(self):
         """追加内容时动态检查是否需要扩宽行号区域"""
@@ -229,7 +412,7 @@ class HugeTextWidget(QAbstractScrollArea):
         
         Args:
             text: 要换行的文本
-            line_idx: 行索引，用于缓存（可选）
+            line_idx: 行索引，用于缓存（可选，相对于当前_lines的索引）
             use_cache: 是否使用缓存
         """
         if not text:
@@ -237,9 +420,10 @@ class HugeTextWidget(QAbstractScrollArea):
         
         available_width = self._get_available_width()
         
-        # 尝试从缓存获取
+        # 尝试从缓存获取（使用实际行号，考虑偏移量）
         if use_cache and line_idx is not None:
-            cache_key = (line_idx, available_width)
+            actual_line_idx = line_idx + self._line_offset
+            cache_key = (actual_line_idx, available_width)
             if cache_key in self._wrapped_lines_cache:
                 return self._wrapped_lines_cache[cache_key]
         
@@ -284,9 +468,10 @@ class HugeTextWidget(QAbstractScrollArea):
             
             result = wrapped if wrapped else [text]
         
-        # 存入缓存
+        # 存入缓存（使用实际行号，考虑偏移量）
         if use_cache and line_idx is not None:
-            cache_key = (line_idx, available_width)
+            actual_line_idx = line_idx + self._line_offset
+            cache_key = (actual_line_idx, available_width)
             self._wrapped_lines_cache[cache_key] = result
         
         return result
@@ -302,21 +487,84 @@ class HugeTextWidget(QAbstractScrollArea):
         return len(wrapped_lines)
 
     def _get_total_display_lines(self):
-        """获取总显示行数（所有原始行换行后的总行数，考虑过滤）"""
+        """获取总显示行数（所有原始行换行后的总行数，考虑过滤）
+        使用缓存避免每次都遍历所有行
+        """
+        # 如果缓存有效，直接返回
+        if not self._total_display_lines_dirty:
+            return self._cached_total_display_lines
+        
+        # 重新计算总显示行数
         total = 0
         for i in range(len(self._lines)):
             # 如果启用过滤且不匹配，跳过这一行
-            if not self._line_matches_filter(self._lines[i]):
+            if not self._line_matches_filter(self._lines[i], line_idx=i):
                 continue
             total += self._get_display_line_count(i)
+        
+        # 更新缓存
+        self._cached_total_display_lines = total
+        self._total_display_lines_dirty = False
         return total
+    
+    def _invalidate_total_display_lines_cache(self):
+        """标记总显示行数缓存为无效"""
+        self._total_display_lines_dirty = True
+    
+    def _find_visible_source_rows(self, first_display_row, last_display_row):
+        """
+        快速查找包含可见显示行的源行范围（优化版本，支持早期退出）
+        
+        Returns:
+            tuple: (start_src_row, end_src_row, start_display_row_offset)
+        """
+        if not self._lines:
+            return (0, 0, 0)
+        
+        # 优化：如果请求的行在最后，从后往前查找可能更快
+        # 但考虑到通常用户滚动到底部，从前往后查找更合理
+        current_display = 0
+        start_src_row = 0
+        start_display_offset = 0
+        found_start = False
+        
+        # 找到包含 first_display_row 的源行
+        # 优化：如果 first_display_row 很大，可以考虑二分查找，但实现复杂
+        # 当前实现已经支持早期退出，在大多数情况下性能足够好
+        for src_row in range(len(self._lines)):
+            # 快速跳过不匹配过滤的行（使用缓存）
+            if not self._line_matches_filter(self._lines[src_row], line_idx=src_row):
+                continue
+            
+            display_count = self._get_display_line_count(src_row)
+            
+            if not found_start:
+                if current_display + display_count > first_display_row:
+                    start_src_row = src_row
+                    start_display_offset = current_display
+                    found_start = True
+                    # 如果开始行已经超出结束行，直接返回
+                    if current_display > last_display_row:
+                        return (start_src_row, start_src_row + 1, start_display_offset)
+                else:
+                    current_display += display_count
+                    continue
+            
+            # 找到包含 last_display_row 的源行（找到后立即退出）
+            if current_display + display_count > last_display_row:
+                return (start_src_row, src_row + 1, start_display_offset)
+            
+            current_display += display_count
+        
+        # 如果没找到结束行，返回到最后一行
+        return (start_src_row, len(self._lines), start_display_offset)
 
     def _display_row_to_source_row_col(self, display_row):
         """将显示行号映射到原始行号和列号（考虑过滤）"""
         current_display = 0
         for src_row in range(len(self._lines)):
             # 如果启用过滤且不匹配，跳过这一行
-            if not self._line_matches_filter(self._lines[src_row]):
+            if not self._line_matches_filter(self._lines[src_row], line_idx=src_row):
                 continue
             
             display_count = self._get_display_line_count(src_row)
@@ -338,7 +586,7 @@ class HugeTextWidget(QAbstractScrollArea):
         if self._lines:
             # 找到最后一个匹配的行
             for i in range(len(self._lines) - 1, -1, -1):
-                if self._line_matches_filter(self._lines[i]):
+                if self._line_matches_filter(self._lines[i], line_idx=i):
                     return (i, len(self._lines[i]))
             return (len(self._lines) - 1, len(self._lines[-1]))
         return (0, 0)
@@ -351,11 +599,11 @@ class HugeTextWidget(QAbstractScrollArea):
         # 计算之前所有原始行的显示行数（只计算匹配过滤的行）
         display_row = 0
         for i in range(src_row):
-            if self._line_matches_filter(self._lines[i]):
+            if self._line_matches_filter(self._lines[i], line_idx=i):
                 display_row += self._get_display_line_count(i)
         
         # 如果当前行不匹配过滤，返回之前的总行数
-        if not self._line_matches_filter(self._lines[src_row]):
+        if not self._line_matches_filter(self._lines[src_row], line_idx=src_row):
             return display_row
         
         # 计算在当前行的哪个显示行
@@ -399,13 +647,18 @@ class HugeTextWidget(QAbstractScrollArea):
         
         sel_start, sel_end = self._get_normalized_selection()
         
-        # 遍历所有原始行，找出需要绘制的显示行
-        current_display_row = 0
-        for src_row in range(len(self._lines)):
+        # 快速查找可见的源行范围（只处理可见区域，大幅提升性能）
+        start_src_row, end_src_row, start_display_offset = self._find_visible_source_rows(
+            first_display_row, last_display_row
+        )
+        
+        # 只遍历可见的源行范围
+        current_display_row = start_display_offset
+        for src_row in range(start_src_row, end_src_row):
             line_text = self._lines[src_row]
             
             # 过滤：如果启用过滤且不匹配，跳过这一行
-            if not self._line_matches_filter(line_text):
+            if not self._line_matches_filter(line_text, line_idx=src_row):
                 continue
             
             wrapped_lines = self._get_wrapped_lines(line_text, line_idx=src_row, use_cache=True)
@@ -515,8 +768,10 @@ class HugeTextWidget(QAbstractScrollArea):
                 
                 # 绘制高亮背景
                 if self._highlight_rules and full_line_text:
-                    # 查找匹配位置（相对于原始行的位置）
-                    matches = self._find_highlight_matches(full_line_text)
+                    # 查找匹配位置（相对于原始行的位置，使用缓存）
+                    # 使用实际行号（考虑偏移量）作为缓存键
+                    actual_line_idx = src_row + self._line_offset
+                    matches = self._find_highlight_matches(full_line_text, line_idx=actual_line_idx)
                     
                     for match_start, match_end, match_color in matches:
                         # 检查匹配是否在当前显示行范围内
@@ -617,16 +872,24 @@ class HugeTextWidget(QAbstractScrollArea):
                 }
         """
         self._highlight_rules = rules if rules else []
+        # 清除高亮缓存
+        self._highlight_cache.clear()
         self.viewport().update()
     
     def clear_highlight_rules(self):
         """清空所有高亮规则"""
         self._highlight_rules = []
+        # 清除高亮缓存
+        self._highlight_cache.clear()
         self.viewport().update()
     
-    def _find_highlight_matches(self, text):
+    def _find_highlight_matches(self, text, line_idx=None):
         """
-        查找文本中的所有高亮匹配位置
+        查找文本中的所有高亮匹配位置（带缓存）
+        
+        Args:
+            text: 要匹配的文本
+            line_idx: 行索引（用于缓存，可选，实际行号，已考虑偏移量）
         
         Returns:
             list: 匹配位置列表，每个元素为 (start, end, color)
@@ -634,6 +897,10 @@ class HugeTextWidget(QAbstractScrollArea):
         matches = []
         if not text or not self._highlight_rules:
             return matches
+        
+        # 如果提供了行索引，尝试从缓存获取
+        if line_idx is not None and line_idx in self._highlight_cache:
+            return self._highlight_cache[line_idx]
         
         for rule in self._highlight_rules:
             keyword = rule.get('keyword', '')
@@ -666,14 +933,20 @@ class HugeTextWidget(QAbstractScrollArea):
         
         # 按位置排序
         matches.sort(key=lambda x: x[0])
+        
+        # 缓存结果
+        if line_idx is not None:
+            self._highlight_cache[line_idx] = matches
+        
         return matches
     
-    def _line_matches_filter(self, line_text):
+    def _line_matches_filter(self, line_text, line_idx=None):
         """
-        检查行是否匹配过滤条件
+        检查行是否匹配过滤条件（带缓存）
         
         Args:
             line_text: 行文本
+            line_idx: 行索引（用于缓存，可选，相对于当前_lines的索引）
             
         Returns:
             bool: 如果启用过滤且模式存在，返回是否匹配；否则返回 True
@@ -681,8 +954,19 @@ class HugeTextWidget(QAbstractScrollArea):
         if not self._filter_enabled or not self._filter_pattern:
             return True
         
+        # 如果提供了行索引，使用实际行号（考虑偏移量）作为缓存键
+        actual_line_idx = None
+        if line_idx is not None:
+            actual_line_idx = line_idx + self._line_offset
+            if actual_line_idx in self._filter_cache:
+                return self._filter_cache[actual_line_idx]
+        
         try:
-            return bool(self._filter_pattern.search(line_text))
+            result = bool(self._filter_pattern.search(line_text))
+            # 缓存结果（使用实际行号）
+            if actual_line_idx is not None:
+                self._filter_cache[actual_line_idx] = result
+            return result
         except (re.error, Exception):
             # 如果正则表达式错误，显示所有行
             return True
@@ -704,8 +988,11 @@ class HugeTextWidget(QAbstractScrollArea):
         else:
             self._filter_pattern = None
         
-        # 清除换行缓存，因为过滤可能改变显示的行
+        # 清除过滤缓存和换行缓存
+        self._filter_cache.clear()
         self._clear_wrapped_cache()
+        # 标记总显示行数缓存为无效（过滤可能改变显示的行数）
+        self._invalidate_total_display_lines_cache()
         self._update_scrollbars()
         self.viewport().update()
     
@@ -717,19 +1004,22 @@ class HugeTextWidget(QAbstractScrollArea):
             enabled: 是否启用过滤
         """
         self._filter_enabled = enabled
-        # 清除换行缓存，因为过滤可能改变显示的行
+        # 清除过滤缓存和换行缓存
+        self._filter_cache.clear()
         self._clear_wrapped_cache()
+        # 标记总显示行数缓存为无效（过滤可能改变显示的行数）
+        self._invalidate_total_display_lines_cache()
         self._update_scrollbars()
         self.viewport().update()
 
     def set_font_family(self, family: str):
         self._font.setFamily(family)
-        self._clear_wrapped_cache()  # 字体改变时清除缓存
+        self._clear_wrapped_cache()  # 字体改变时清除缓存（会自动标记总显示行数缓存失效）
         self._update_metrics()
 
     def set_font_size(self, size: int):
         self._font.setPointSize(size)
-        self._clear_wrapped_cache()  # 字体改变时清除缓存
+        self._clear_wrapped_cache()  # 字体改变时清除缓存（会自动标记总显示行数缓存失效）
         self._update_metrics()
 
     def set_text_color(self, color: QColor):
@@ -780,9 +1070,16 @@ class HugeTextWidget(QAbstractScrollArea):
         self._lines = []
         self._line_timestamps = [] # 清空时间戳
         self._raw_bytes = b""
+        self._line_offset = 0  # 重置行号偏移量
         self._sel_start_pos = None
         self._sel_end_pos = None
         self._clear_wrapped_cache()  # 清除换行缓存
+        self._filter_cache.clear()  # 清除过滤缓存
+        self._highlight_cache.clear()  # 清除高亮缓存
+        self._cached_total_display_lines = 0  # 重置总显示行数缓存
+        self._total_display_lines_dirty = False  # 缓存有效
+        self._pending_update = False
+        self._update_timer.stop()
         self._update_metrics() # 重置宽度
         self._update_scrollbars()
         self.viewport().update()
@@ -793,7 +1090,8 @@ class HugeTextWidget(QAbstractScrollArea):
         now = time.time()
         self._line_timestamps = [now] * len(self._lines)
         self._raw_bytes = text.encode(self._encoding, errors='replace')
-        self._clear_wrapped_cache()  # 清除换行缓存
+        self._line_offset = 0  # 重置行号偏移量
+        self._clear_wrapped_cache()  # 清除换行缓存（会自动标记总显示行数缓存失效）
         self._update_metrics()
         self._update_scrollbars()
         self.viewport().update()
@@ -839,7 +1137,7 @@ class HugeTextWidget(QAbstractScrollArea):
         
         if 0 <= src_row < len(self._lines):
             # 确保该行匹配过滤（应该总是匹配，因为 _display_row_to_source_row_col 已经处理了）
-            if not self._line_matches_filter(self._lines[src_row]):
+            if not self._line_matches_filter(self._lines[src_row], line_idx=src_row):
                 # 如果不匹配，返回行首
                 return (src_row, 0)
             
@@ -849,7 +1147,7 @@ class HugeTextWidget(QAbstractScrollArea):
             # 找到该显示行在原始行中的起始位置（考虑过滤）
             current_display = 0
             for i in range(src_row):
-                if self._line_matches_filter(self._lines[i]):
+                if self._line_matches_filter(self._lines[i], line_idx=i):
                     current_display += self._get_display_line_count(i)
             local_display = display_row - current_display
             

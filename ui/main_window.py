@@ -126,7 +126,11 @@ class MainWindow(QMainWindow):
     def show_preference_window(self):
         """显示首选项窗口"""
         self.prefs_window.load_config()
-        self.prefs_window.show()
+        if self.prefs_window.exec_() == QDialog.Accepted:
+            # 如果用户点击保存，重新应用设置
+            self.apply_log_preferences()
+            # 重新加载配置以确保所有设置都同步
+            self.load_config()
     
     def apply_log_preferences(self):
         """应用日志显示首选项设置"""
@@ -135,12 +139,14 @@ class MainWindow(QMainWindow):
         font_color = self.prefs_window.text_color or VSCodeTheme.FOREGROUND
         font_bg_color = self.prefs_window.bg_color or VSCodeTheme.BACKGROUND
         encoding = self.prefs_window.encoding_combo.currentText().lower()
+        max_lines = self.prefs_window.max_lines_spin.value() if hasattr(self.prefs_window, 'max_lines_spin') else 50000
 
         self.normal_display.set_font_size(font_size)
         self.normal_display.set_font_family(font)
         self.normal_display.set_text_color(font_color)
         self.normal_display.set_bg_color(font_bg_color)
         self.normal_display.set_encoding(encoding)
+        self.normal_display.set_max_lines(max_lines)
         
         # 同步设置到所有日志窗口
         for log_window in self.log_windows:
@@ -150,6 +156,7 @@ class MainWindow(QMainWindow):
                 log_window.set_text_color(font_color)
                 log_window.set_bg_color(font_bg_color)
                 log_window.set_encoding(encoding)
+                log_window.set_max_lines(max_lines)
     
     def open_highlight_config(self):
         """打开高亮配置窗口"""
@@ -441,6 +448,19 @@ class MainWindow(QMainWindow):
                     if encoding_text == "LATIN-1":
                         encoding_text = "Latin-1"
                     self.prefs_window.encoding_combo.setCurrentText(encoding_text)
+            
+            # 设置最大缓存行数
+            if 'max_lines' in config:
+                max_lines = config['max_lines']
+                self.normal_display.set_max_lines(max_lines)
+                # 同步到所有日志窗口
+                for log_window in self.log_windows:
+                    if log_window and log_window.isVisible():
+                        log_window.set_max_lines(max_lines)
+            else:
+                # 使用默认值
+                default_max_lines = 50000
+                self.normal_display.set_max_lines(default_max_lines)
 
             self.apply_log_preferences()
             
@@ -456,6 +476,7 @@ class MainWindow(QMainWindow):
     
     def save_config(self):
         """保存配置文件"""
+        max_lines = self.prefs_window.max_lines_spin.value() if hasattr(self.prefs_window, 'max_lines_spin') else 50000
         config = {
             'port': self.port_combo.currentText(),
             'baudrate': self.baud_combo.get_baudrate(),
@@ -471,6 +492,7 @@ class MainWindow(QMainWindow):
             'font_size': int(self.prefs_window.spin_size.value()) if self.prefs_window.spin_size.value() else 10,
             'font_color': self.prefs_window.text_color or VSCodeTheme.FOREGROUND,
             'bg_color': self.prefs_window.bg_color or VSCodeTheme.BACKGROUND_LIGHT,
+            'max_lines': max_lines,
             'highlight_rules': getattr(self, '_current_highlight_rules', [])
         }
         

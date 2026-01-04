@@ -154,6 +154,10 @@ class LogWindow(QMainWindow):
         """设置编码"""
         self.normal_display.set_encoding(encoding)
     
+    def set_max_lines(self, max_lines: int):
+        """设置最大显示行数"""
+        self.normal_display.set_max_lines(max_lines)
+    
     def clear(self):
         """清空显示"""
         self.normal_display.clear()

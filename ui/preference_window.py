@@ -75,6 +75,17 @@ class PreferenceWindow(QDialog):
         self.spin_size.setValue(10)
         log_display_layout.addWidget(self.spin_size)
         
+        # 总缓存行数设置
+        cache_layout = QHBoxLayout()
+        cache_layout.addWidget(QLabel("总缓存行数:"))
+        self.max_lines_spin = QSpinBox()
+        self.max_lines_spin.setRange(1000, 1000000)
+        self.max_lines_spin.setValue(50000)
+        self.max_lines_spin.setSuffix(" 行")
+        cache_layout.addWidget(self.max_lines_spin)
+        cache_layout.addStretch()
+        log_display_layout.addLayout(cache_layout)
+        
         # 颜色选择
         self.btn_color = QPushButton("Text Color")
         self.btn_color.clicked.connect(self.pick_color)
@@ -166,6 +177,8 @@ class PreferenceWindow(QDialog):
                 self.text_color = config['font_color']
             if 'bg_color' in config:
                 self.bg_color = config['bg_color']
+            if 'max_lines' in config:
+                self.max_lines_spin.setValue(config['max_lines'])
 
         except Exception as e:
             QMessageBox.critical(self, "加载配置失败", str(e))
@@ -180,12 +193,13 @@ class PreferenceWindow(QDialog):
             'font': self.font_combo.currentFont().family(),
             'font_size': int(self.spin_size.value()) if self.spin_size.value() else 10,
             'font_color': self.text_color or VSCodeTheme.FOREGROUND,
-            'bg_color': self.bg_color or VSCodeTheme.BACKGROUND_LIGHT
+            'bg_color': self.bg_color or VSCodeTheme.BACKGROUND_LIGHT,
+            'max_lines': int(self.max_lines_spin.value())
         }
         
         try:
             ConfigHandler.save_config(config)
-            self.close()
+            self.accept()  # 返回 Accepted 状态
         except Exception as e:
             QMessageBox.critical(self, "保存配置失败", str(e))
 
