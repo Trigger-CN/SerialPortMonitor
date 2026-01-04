@@ -2,13 +2,12 @@
 
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
-                             QLabel, QApplication, QWidget,
-                             QStackedWidget, QProgressBar, QMessageBox, QDialog)
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex
-from PyQt5.QtGui import QFont
+                             QLabel, QWidget,
+                             QStackedWidget, QMessageBox, QDialog)
+from PyQt5.QtCore import QTimer
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
-                       StyledTextEdit, StyledLineEdit, StyledCheckBox, 
-                       StyledGroupBox, ComparisonTextDisplay, StyledLazyTextEdit)
+                       StyledLineEdit, StyledCheckBox, 
+                       StyledGroupBox)
 from ui.long_text_widget import HugeTextWidget, ViewMode
 from core.serial_manager import SerialManager
 from core.port_scanner import PortScanner
@@ -17,28 +16,10 @@ from utils.data_cache import DataCacheManager
 from styles.vs_code_theme import VSCodeTheme
 from utils.file_handler import FileHandler
 from utils.config_handler import ConfigHandler  # 导入ConfigHandler类
-from PyQt5.QtWidgets import QFileDialog
 from ui.preference_window import PreferenceWindow
 from ui.highlight_config_window import HighlightConfigWindow
 from ui.log_window import LogWindow
 import version
-
-class LazyDisplayUpdateWorker(QThread):
-    """懒加载显示更新工作线程"""
-    
-    chunk_ready = pyqtSignal(int, object)  # 块索引, 内容
-    progress_updated = pyqtSignal(int)  # 进度百分比
-    finished = pyqtSignal()
-    
-    def __init__(self, data_cache, display_mode, hex_display, show_timestamp):
-        super().__init__()
-        self.data_cache = data_cache
-        self.display_mode = display_mode
-        self.hex_display = hex_display
-        self.show_timestamp = show_timestamp
-        self.data_processor = DataProcessor()
-        self._is_running = True
-        self.mutex = QMutex()
 
 class MainWindow(QMainWindow):
     """主窗口"""
@@ -58,10 +39,6 @@ class MainWindow(QMainWindow):
         self.display_mode = "normal"
 
         self.is_closing = False
-        
-        # 懒加载相关
-        self.use_lazy_loading = True
-        self.initial_chunks_loaded = False
         
         self.init_ui()
         self.init_connections()
@@ -621,11 +598,6 @@ class MainWindow(QMainWindow):
             self.status_label.setText("🔍 过滤已禁用")
             self.status_label.setStyleSheet(f"color: {VSCodeTheme.GREEN};")
     
-    def scroll_to_bottom(self):
-        """滚动到底部"""
-        scrollbar = self.normal_display.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
-    
     def get_display_mode_name(self, mode: str) -> str:
         """获取显示模式名称"""
         names = {
@@ -728,9 +700,6 @@ class MainWindow(QMainWindow):
             if log_window and log_window.isVisible():
                 log_window.append_data(data)
         
-        # # 如果启用了自动滚动，滚动到底部
-        # if self.auto_scroll.isChecked():
-        #     self.scroll_to_bottom()
 
     def send_data(self):
         """发送数据"""

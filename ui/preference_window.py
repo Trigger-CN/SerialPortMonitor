@@ -6,8 +6,8 @@ from PyQt5.QtCore import Qt, QPoint
 from styles.vs_code_theme import VSCodeTheme
 from utils.config_handler import ConfigHandler
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
-                       StyledTextEdit, StyledLineEdit, StyledCheckBox, 
-                       StyledGroupBox, ComparisonTextDisplay, StyledLazyTextEdit)
+                       StyledLineEdit, StyledCheckBox, 
+                       StyledGroupBox)
 import version
 
 class PreferenceWindow(QDialog):

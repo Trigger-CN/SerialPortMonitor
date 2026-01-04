@@ -1,113 +1,8 @@
-from PyQt5.QtWidgets import (QComboBox, QPushButton, QTextEdit, 
-                             QLineEdit, QCheckBox, QGroupBox, QSplitter,
-                             QHBoxLayout, QWidget, QLabel, QVBoxLayout)
+from PyQt5.QtWidgets import (QComboBox, QPushButton, 
+                             QLineEdit, QCheckBox, QGroupBox)
 from PyQt5.QtGui import QFont
-from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt5.QtCore import pyqtSignal
 from styles.vs_code_theme import VSCodeTheme
-from .lazy_text_edit import LazyTextEdit
-
-class StyledLazyTextEdit(LazyTextEdit):
-    """带样式的懒加载文本框"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        font = QFont(VSCodeTheme.FONT_FAMILY, 10)
-        self.setFont(font)
-
-class ComparisonTextDisplay(QWidget):
-    """文本和十六进制对照显示控件（懒加载版本）"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.init_ui()
-        self.connect_scroll_bars()
-    
-    def init_ui(self):
-        """初始化UI"""
-        layout = QHBoxLayout(self)
-        layout.setSpacing(5)  # 调整间距
-        layout.setContentsMargins(0, 0, 0, 0)  # 调整边距
-        
-        # 创建分割器
-        self.splitter = QSplitter(Qt.Horizontal)
-        
-        # 文本显示区域
-        self.text_display = StyledLazyTextEdit()
-        text_widget = self.create_display_widget("📝 文本显示", self.text_display)
-        
-        # 十六进制显示区域
-        self.hex_display = StyledLazyTextEdit()
-        hex_widget = self.create_display_widget("🔢 十六进制显示", self.hex_display)
-        
-        # 添加到分割器
-        self.splitter.addWidget(text_widget)
-        self.splitter.addWidget(hex_widget)
-        
-        # 设置分割比例
-        self.splitter.setSizes([400, 400])
-        
-        layout.addWidget(self.splitter)
-    
-    def create_display_widget(self, label_text, display_text):
-        """创建显示区域的部件"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel(label_text))
-        layout.addWidget(display_text)
-        return widget
-    
-    def connect_scroll_bars(self):
-        """连接滚动条实现同步滚动"""
-        # 文本区域的垂直滚动条
-        text_vbar = self.text_display.verticalScrollBar()
-        hex_vbar = self.hex_display.verticalScrollBar()
-        
-        # 避免重复连接
-        if not text_vbar.signalsBlocked() and not hex_vbar.signalsBlocked():
-            text_vbar.valueChanged.connect(hex_vbar.setValue)
-            hex_vbar.valueChanged.connect(text_vbar.setValue)
-    
-    def set_total_chunks(self, total_chunks: int):
-        """设置总块数"""
-        self.text_display.set_total_chunks(total_chunks)
-        self.hex_display.set_total_chunks(total_chunks)
-    
-    def append_chunk(self, text_content: str, hex_content: str, chunk_index: int):
-        """追加一个内容块到两个显示区域"""
-        self.text_display.append_chunk(chunk_index, text_content)
-        self.hex_display.append_chunk(chunk_index, hex_content)
-    
-    def append_text(self, text_content: str, hex_content: str):
-        """追加文本到两个显示区域（直接追加，不分块）"""
-        # 追加文本内容
-        text_cursor = self.text_display.textCursor()
-        text_cursor.movePosition(text_cursor.End)
-        text_cursor.insertText(text_content + '\n')
-        
-        # 追加十六进制内容
-        hex_cursor = self.hex_display.textCursor()
-        hex_cursor.movePosition(hex_cursor.End)
-        hex_cursor.insertText(hex_content + '\n')
-    
-    def clear(self):
-        """清空两个显示区域"""
-        self.text_display.clear()
-        self.hex_display.clear()
-    
-    def scroll_to_bottom(self):
-        """滚动到底部"""
-        self.text_display.verticalScrollBar().setValue(
-            self.text_display.verticalScrollBar().maximum()
-        )
-        self.hex_display.verticalScrollBar().setValue(
-            self.hex_display.verticalScrollBar().maximum()
-        )
-    
-    def connect_load_signals(self, text_slot, hex_slot):
-        """连接加载信号"""
-        self.text_display.load_more_requested.connect(text_slot)
-        self.hex_display.load_more_requested.connect(hex_slot)
 
 class StyledComboBox(QComboBox):
     def __init__(self, parent=None):
@@ -316,38 +211,6 @@ class StyledButton(QPushButton):
             }}
             QPushButton:pressed {{
                 background-color: {VSCodeTheme.GREEN_DARK};
-            }}
-        """)
-
-class StyledTextEdit(QTextEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
-        self.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: {VSCodeTheme.BACKGROUND};
-                color: {VSCodeTheme.FOREGROUND};
-                border: 1px solid {VSCodeTheme.BACKGROUND_LIGHTER};
-                border-radius: 3px;
-                padding: 8px;
-                selection-background-color: {VSCodeTheme.ACCENT};
-            }}
-            QScrollBar:vertical {{
-                background-color: {VSCodeTheme.BACKGROUND_LIGHT};
-                width: 12px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {VSCodeTheme.BACKGROUND_LIGHTER};
-                border-radius: 6px;
-                min-height: 20px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background-color: {VSCodeTheme.ACCENT};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                border: none;
-                background: none;
             }}
         """)
 
