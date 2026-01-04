@@ -3,7 +3,7 @@
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
                              QLabel, QWidget, QMessageBox)
 from PyQt5.QtCore import pyqtSignal, Qt
-from ui.widgets import StyledLineEdit, StyledButton, StyledGroupBox
+from ui.widgets import StyledLineEdit, StyledButton, StyledGroupBox, StyledCheckBox
 from ui.long_text_widget import HugeTextWidget, ViewMode
 from styles.vs_code_theme import VSCodeTheme
 import version
@@ -52,9 +52,14 @@ class LogWindow(QMainWindow):
         filter_layout.addWidget(filter_label)
         
         self.filter_input = StyledLineEdit()
-        self.filter_input.setPlaceholderText("输入正则表达式（如: error|warning）")
+        self.filter_input.setPlaceholderText("输入过滤表达式（如: error|warning）")
         self.filter_input.textChanged.connect(self.on_filter_pattern_changed)
         filter_layout.addWidget(self.filter_input)
+        
+        self.filter_regex_checkbox = StyledCheckBox("正则")
+        self.filter_regex_checkbox.setChecked(True)  # 默认启用正则表达式
+        self.filter_regex_checkbox.toggled.connect(self.on_filter_regex_changed)
+        filter_layout.addWidget(self.filter_regex_checkbox)
         
         self.filter_enable_btn = StyledButton("启用过滤")
         self.filter_enable_btn.setCheckable(True)
@@ -74,8 +79,10 @@ class LogWindow(QMainWindow):
     def on_filter_pattern_changed(self, pattern_str):
         """过滤表达式改变时的处理"""
         import re
-        # 验证正则表达式是否有效
-        if pattern_str:
+        use_regex = self.filter_regex_checkbox.isChecked()
+        
+        # 验证正则表达式是否有效（仅在正则模式下）
+        if pattern_str and use_regex:
             try:
                 re.compile(pattern_str)
                 is_valid = True
@@ -88,12 +95,22 @@ class LogWindow(QMainWindow):
         if self.filter_enable_btn.isChecked():
             # 如果已启用过滤，更新窗口标题提示
             if pattern_str:
-                if is_valid:
-                    self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤: {pattern_str}]")
+                if use_regex:
+                    if is_valid:
+                        self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤（正则）: {pattern_str}]")
+                    else:
+                        self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [无效表达式]")
                 else:
-                    self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [无效表达式]")
+                    self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤（文本）: {pattern_str}]")
             else:
                 self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤: 空]")
+    
+    def on_filter_regex_changed(self, use_regex: bool):
+        """正则表达式使能状态改变时的处理"""
+        self.normal_display.set_filter_use_regex(use_regex)
+        # 重新验证并更新窗口标题
+        pattern_str = self.filter_input.text()
+        self.on_filter_pattern_changed(pattern_str)
     
     def on_filter_enabled_changed(self, enabled: bool):
         """过滤使能状态改变时的处理"""
@@ -102,13 +119,17 @@ class LogWindow(QMainWindow):
             self.filter_enable_btn.set_checked_style()
             self.filter_enable_btn.setText("禁用过滤")
             pattern = self.filter_input.text()
+            use_regex = self.filter_regex_checkbox.isChecked()
             if pattern:
-                import re
-                try:
-                    re.compile(pattern)
-                    self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤: {pattern}]")
-                except re.error:
-                    self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [无效表达式]")
+                if use_regex:
+                    import re
+                    try:
+                        re.compile(pattern)
+                        self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤（正则）: {pattern}]")
+                    except re.error:
+                        self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [无效表达式]")
+                else:
+                    self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤（文本）: {pattern}]")
             else:
                 self.setWindowTitle(f"{version.get_app_title()} - 日志窗口 {self.window_id} [过滤: 空]")
         else:

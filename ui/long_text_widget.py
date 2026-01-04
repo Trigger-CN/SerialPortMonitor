@@ -54,9 +54,10 @@ class HugeTextWidget(QAbstractScrollArea):
         self._highlight_enabled = True  # 高亮使能开关
         
         # --- 过滤功能 ---
-        self._filter_pattern = None  # 正则表达式模式对象
+        self._filter_pattern = None  # 正则表达式模式对象（或普通字符串）
         self._filter_enabled = False  # 是否启用过滤
-        self._filter_regex_str = ""  # 原始正则表达式字符串
+        self._filter_regex_str = ""  # 原始过滤字符串
+        self._filter_use_regex = True  # 是否使用正则表达式模式
         self._filter_cache = {}  # 过滤结果缓存: {line_idx: bool}
         
         # --- 性能优化：换行结果缓存 ---
@@ -1036,7 +1037,12 @@ class HugeTextWidget(QAbstractScrollArea):
                 return self._filter_cache[actual_line_idx]
         
         try:
-            result = bool(self._filter_pattern.search(line_text))
+            if self._filter_use_regex:
+                # 使用正则表达式匹配
+                result = bool(self._filter_pattern.search(line_text))
+            else:
+                # 使用普通字符串匹配
+                result = self._filter_pattern in line_text
             # 缓存结果（使用实际行号）
             if actual_line_idx is not None:
                 self._filter_cache[actual_line_idx] = result
@@ -1047,18 +1053,23 @@ class HugeTextWidget(QAbstractScrollArea):
     
     def set_filter_pattern(self, pattern_str):
         """
-        设置过滤正则表达式模式
+        设置过滤模式
         
         Args:
-            pattern_str: 正则表达式字符串，如果为空则清除过滤
+            pattern_str: 过滤字符串（正则表达式或普通字符串），如果为空则清除过滤
         """
         self._filter_regex_str = pattern_str
         if pattern_str:
-            try:
-                self._filter_pattern = re.compile(pattern_str)
-            except re.error:
-                # 如果正则表达式无效，清除模式
-                self._filter_pattern = None
+            if self._filter_use_regex:
+                # 使用正则表达式模式
+                try:
+                    self._filter_pattern = re.compile(pattern_str)
+                except re.error:
+                    # 如果正则表达式无效，清除模式
+                    self._filter_pattern = None
+            else:
+                # 使用普通字符串模式
+                self._filter_pattern = pattern_str
         else:
             self._filter_pattern = None
         
@@ -1069,6 +1080,50 @@ class HugeTextWidget(QAbstractScrollArea):
         self._invalidate_total_display_lines_cache()
         self._update_scrollbars()
         self.viewport().update()
+    
+    def set_filter_use_regex(self, use_regex: bool):
+        """
+        设置是否使用正则表达式模式
+        
+        Args:
+            use_regex: 是否使用正则表达式模式
+        """
+        if self._filter_use_regex == use_regex:
+            return  # 没有变化，不需要更新
+        
+        self._filter_use_regex = use_regex
+        
+        # 重新设置过滤模式（根据新的模式类型）
+        pattern_str = self._filter_regex_str
+        if pattern_str:
+            if use_regex:
+                # 切换到正则表达式模式
+                try:
+                    self._filter_pattern = re.compile(pattern_str)
+                except re.error:
+                    self._filter_pattern = None
+            else:
+                # 切换到普通字符串模式
+                self._filter_pattern = pattern_str
+        else:
+            self._filter_pattern = None
+        
+        # 清除过滤缓存和换行缓存
+        self._filter_cache.clear()
+        self._clear_wrapped_cache()
+        # 标记总显示行数缓存为无效（过滤可能改变显示的行数）
+        self._invalidate_total_display_lines_cache()
+        self._update_scrollbars()
+        self.viewport().update()
+    
+    def is_filter_use_regex(self) -> bool:
+        """
+        获取是否使用正则表达式模式
+        
+        Returns:
+            bool: 是否使用正则表达式模式
+        """
+        return self._filter_use_regex
     
     def set_filter_enabled(self, enabled):
         """
