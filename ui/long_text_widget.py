@@ -682,49 +682,7 @@ class HugeTextWidget(QAbstractScrollArea):
                 if src_row == self._current_line_index and is_first_wrap_line:
                     painter.fillRect(self._line_num_area_width, draw_y, viewport_w, self._line_height, self._colors['highlight'])
                 
-                # 绘制选择背景
-                if sel_start and sel_end:
-                    if sel_start[0] <= src_row <= sel_end[0]:
-                        # 重用已计算的 wrapped_lines，避免重复计算
-                        start_char_in_line = 0
-                        for i in range(wrap_idx):
-                            start_char_in_line += len(wrapped_lines[i])
-                        end_char_in_line = start_char_in_line + len(wrapped_text)
-                        
-                        # 计算选择范围在这一行的部分
-                        if src_row == sel_start[0] and src_row == sel_end[0]:
-                            # 同一行的选择
-                            sel_start_char = max(start_char_in_line, sel_start[1])
-                            sel_end_char = min(end_char_in_line, sel_end[1])
-                            if sel_end_char > sel_start_char:
-                                # 计算选择区域在当前显示行中的位置
-                                text_before_sel = wrapped_text[:max(0, sel_start_char - start_char_in_line)]
-                                selected_text = line_text[sel_start_char:sel_end_char]
-                                sel_x = self._line_num_area_width + 5 + self._font_metrics.width(text_before_sel)
-                                sel_w = self._font_metrics.width(selected_text)
-                                painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
-                        elif src_row == sel_start[0]:
-                            # 选择开始行
-                            sel_start_char = max(start_char_in_line, sel_start[1])
-                            if sel_start_char < end_char_in_line:
-                                text_before_sel = wrapped_text[:max(0, sel_start_char - start_char_in_line)]
-                                selected_text = line_text[sel_start_char:end_char_in_line]
-                                sel_x = self._line_num_area_width + 5 + self._font_metrics.width(text_before_sel)
-                                sel_w = self._font_metrics.width(selected_text)
-                                painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
-                        elif src_row == sel_end[0]:
-                            # 选择结束行
-                            sel_end_char = min(end_char_in_line, sel_end[1])
-                            if sel_end_char > start_char_in_line:
-                                selected_text = line_text[start_char_in_line:sel_end_char]
-                                sel_x = self._line_num_area_width + 5
-                                sel_w = self._font_metrics.width(selected_text)
-                                painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
-                        elif sel_start[0] < src_row < sel_end[0]:
-                            # 中间行，全选
-                            sel_x = self._line_num_area_width + 5
-                            sel_w = self._font_metrics.width(wrapped_text)
-                            painter.fillRect(sel_x, draw_y, sel_w, self._line_height, self._colors['selection'])
+                # 注意：选择背景将在高亮绘制之后绘制，以确保选择区域可见
 
                 # --- 绘制左侧区域 (固定不动) ---
                 painter.translate(-x_offset, 0)
@@ -767,6 +725,35 @@ class HugeTextWidget(QAbstractScrollArea):
                 
                 # 获取原始行的完整文本用于匹配
                 full_line_text = line_text
+                
+                # 计算选择区域在当前显示行中的位置（用于高亮绘制时避免覆盖选择）
+                selection_in_wrapped = None
+                if sel_start and sel_end and sel_start[0] <= src_row <= sel_end[0]:
+                    start_char_in_line = 0
+                    for i in range(wrap_idx):
+                        start_char_in_line += len(wrapped_lines[i])
+                    end_char_in_line = start_char_in_line + len(wrapped_text)
+                    
+                    if src_row == sel_start[0] and src_row == sel_end[0]:
+                        # 同一行的选择
+                        sel_start_char = max(start_char_in_line, sel_start[1])
+                        sel_end_char = min(end_char_in_line, sel_end[1])
+                        if sel_end_char > sel_start_char:
+                            selection_in_wrapped = (max(0, sel_start_char - start_char_in_line), 
+                                                   min(len(wrapped_text), sel_end_char - start_char_in_line))
+                    elif src_row == sel_start[0]:
+                        # 选择开始行
+                        sel_start_char = max(start_char_in_line, sel_start[1])
+                        if sel_start_char < end_char_in_line:
+                            selection_in_wrapped = (max(0, sel_start_char - start_char_in_line), len(wrapped_text))
+                    elif src_row == sel_end[0]:
+                        # 选择结束行
+                        sel_end_char = min(end_char_in_line, sel_end[1])
+                        if sel_end_char > start_char_in_line:
+                            selection_in_wrapped = (0, min(len(wrapped_text), sel_end_char - start_char_in_line))
+                    elif sel_start[0] < src_row < sel_end[0]:
+                        # 中间行，全选
+                        selection_in_wrapped = (0, len(wrapped_text))
                 
                 # 绘制高亮背景和文本（分段绘制以支持不同颜色）
                 if self._highlight_enabled and self._highlight_rules and full_line_text:
@@ -811,6 +798,7 @@ class HugeTextWidget(QAbstractScrollArea):
                                 highlight_w = self._font_metrics.width(matched_text)
                                 
                                 # 如果指定了背景色，使用指定的；否则使用全局文本背景色
+                                # 但要注意不要覆盖选择区域
                                 if bg_color:
                                     painter.fillRect(highlight_x, draw_y, highlight_w, self._line_height, bg_color)
                                 else:
@@ -843,6 +831,21 @@ class HugeTextWidget(QAbstractScrollArea):
                     painter.drawText(text_x, draw_y, 
                                      viewport_w, self._line_height, 
                                      Qt.AlignLeft | Qt.AlignVCenter, wrapped_text)
+                
+                # 绘制选择背景（在高亮之后绘制，确保选择区域可见）
+                if sel_start and sel_end and selection_in_wrapped:
+                    sel_start_char, sel_end_char = selection_in_wrapped
+                    if sel_end_char > sel_start_char:
+                        text_before_sel = wrapped_text[:sel_start_char]
+                        selected_text = wrapped_text[sel_start_char:sel_end_char]
+                        sel_x = text_x + self._font_metrics.width(text_before_sel)
+                        sel_w = self._font_metrics.width(selected_text)
+                        # 使用半透明选择颜色，让选择背景和高亮背景都能看到
+                        selection_color = self._colors['selection']
+                        # 创建一个半透明的选择颜色，这样可以看到下面的高亮
+                        selection_color_alpha = QColor(selection_color)
+                        selection_color_alpha.setAlpha(180)  # 设置透明度
+                        painter.fillRect(sel_x, draw_y, sel_w, self._line_height, selection_color_alpha)
             
             current_display_row += display_count
             if current_display_row >= last_display_row:
@@ -1397,6 +1400,10 @@ class HugeTextWidget(QAbstractScrollArea):
     # 返回缓存的数据
     def get_cached_data(self):
         return self._raw_bytes.decode(self._encoding, errors='replace')
+    
+    def get_raw_bytes_size(self):
+        """获取原始字节数据的大小（用于统计）"""
+        return len(self._raw_bytes)
 # ===========================
 # Demo
 # ===========================

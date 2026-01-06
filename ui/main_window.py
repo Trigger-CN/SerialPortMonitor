@@ -2,7 +2,7 @@
 
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
-                             QLabel, QWidget,
+                             QLabel, QWidget, QFrame,
                              QStackedWidget, QMessageBox, QDialog)
 from PyQt5.QtCore import QTimer
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
@@ -34,6 +34,7 @@ class MainWindow(QMainWindow):
         # 统计数据
         self.received_count = 0
         self.sent_count = 0
+        self.packet_count = 0  # 数据包计数（用于缓存统计）
         
         # 显示模式
         self.display_mode = "normal"
@@ -49,6 +50,8 @@ class MainWindow(QMainWindow):
         # 多窗口管理
         self.log_windows = []  # 存储所有日志窗口
         self._window_counter = 0  # 窗口计数器
+        # 初始化缓存信息显示
+        self.update_cache_info()
         # 加载配置
         self.load_config()
     
@@ -72,8 +75,8 @@ class MainWindow(QMainWindow):
         
         # 操作布局
         option_layout = QVBoxLayout()
-        option_layout.setSpacing(5)
-        option_layout.setContentsMargins(5, 5, 5, 5)  # 收窄边距
+        option_layout.setSpacing(12)  # 增加间距，使布局更舒适
+        option_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距，让GroupBox自己控制
         layout.addLayout(option_layout)
         
         # 创建各个UI组件
@@ -97,9 +100,20 @@ class MainWindow(QMainWindow):
     
     def create_prefs_button(self, layout):
         """创建首选项按钮"""
-        self.prefs_btn = StyledButton("🔧 设置首选项")
+        prefs_group = StyledGroupBox("⚙️ 系统设置")
+        prefs_group.setFixedWidth(280)  # 统一宽度
+        
+        prefs_layout = QVBoxLayout()
+        prefs_layout.setSpacing(10)
+        prefs_layout.setContentsMargins(12, 15, 12, 12)
+        
+        self.prefs_btn = StyledButton("🔧 首选项设置")
         self.prefs_btn.clicked.connect(self.show_preference_window)
-        layout.addWidget(self.prefs_btn)
+        prefs_layout.addWidget(self.prefs_btn)
+        
+        prefs_layout.addStretch()
+        prefs_group.setLayout(prefs_layout)
+        layout.addWidget(prefs_group)
     
     def show_preference_window(self):
         """显示首选项窗口"""
@@ -173,16 +187,21 @@ class MainWindow(QMainWindow):
     def create_log_path_section(self, layout):
         """创建日志路径设置区域"""
         log_path_group = StyledGroupBox("📜 日志路径")
-        log_path_group.setFixedWidth(250)  # 设置固定宽度
+        log_path_group.setFixedWidth(280)  # 统一宽度
         
         log_path_layout = QVBoxLayout()
+        log_path_layout.setSpacing(8)
+        log_path_layout.setContentsMargins(12, 15, 12, 12)
         
-        log_path_layout.addWidget(QLabel("路径:"))
+        path_label = QLabel("保存路径:")
+        path_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal;")
+        log_path_layout.addWidget(path_label)
+        
         self.log_path_input = StyledLineEdit()
         self.log_path_input.setPlaceholderText("选择或输入日志文件保存路径")
         log_path_layout.addWidget(self.log_path_input)
         
-        self.log_path_btn = StyledButton("浏览")
+        self.log_path_btn = StyledButton("📁 浏览路径")
         self.log_path_btn.clicked.connect(self.browse_log_path)
         log_path_layout.addWidget(self.log_path_btn)
         
@@ -197,82 +216,139 @@ class MainWindow(QMainWindow):
 
     def create_serial_config_section(self, layout):
         """创建串口配置区域"""
-        config_group = StyledGroupBox("串口配置")
-        config_group.setFixedWidth(250)  # 设置固定宽度
+        config_group = StyledGroupBox("🔌 串口配置")
+        config_group.setFixedWidth(280)  # 统一宽度
         
         config_layout = QVBoxLayout()
         config_layout.setSpacing(10)
+        config_layout.setContentsMargins(12, 15, 12, 12)
         
         # 串口选择
-        self.com_label = QLabel("📡串口:")
-        config_layout.addWidget(self.com_label)
+        com_label = QLabel("串口:")
+        com_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal;")
+        config_layout.addWidget(com_label)
         self.port_combo = StyledComboBox()
         config_layout.addWidget(self.port_combo)
         
         # 波特率选择
-        self.baud_label = QLabel("⚡波特率:")
-        config_layout.addWidget(self.baud_label)
+        baud_label = QLabel("波特率:")
+        baud_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal;")
+        config_layout.addWidget(baud_label)
         self.baud_combo = CustomBaudrateComboBox()
         config_layout.addWidget(self.baud_combo)
         
+        # 按钮区域 - 使用水平布局
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(8)
+        
         # 刷新串口按钮
-        self.refresh_btn = StyledButton("🔄刷新")
-        config_layout.addWidget(self.refresh_btn)
+        self.refresh_btn = StyledButton("🔄 刷新")
+        button_layout.addWidget(self.refresh_btn)
 
         # 打开/关闭串口按钮
-        self.connect_btn = StyledButton("🔌打开串口")
-        config_layout.addWidget(self.connect_btn)
-
-        config_layout.addStretch()
-        config_layout.addWidget(QLabel("显示配置:"))
+        self.connect_btn = StyledButton("🔌 打开串口")
+        button_layout.addWidget(self.connect_btn)
+        
+        config_layout.addLayout(button_layout)
+        
+        # 添加分隔线
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setStyleSheet(f"color: {VSCodeTheme.BACKGROUND_LIGHTER};")
+        config_layout.addWidget(separator)
+        
+        # 显示配置区域
+        display_label = QLabel("显示选项:")
+        display_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 5px;")
+        config_layout.addWidget(display_label)
+        
         # 时间戳显示
-        self.timestamp = StyledButton("⏰显示时间戳")
+        self.timestamp = StyledButton("⏰ 时间戳")
         self.timestamp.setCheckable(True)
         self.timestamp.toggled.connect(self.on_timestamp_changed)
         config_layout.addWidget(self.timestamp)
         
         # 自动滚动
-        self.auto_scroll = StyledButton("📜自动滚动")
+        self.auto_scroll = StyledButton("📜 自动滚动")
         self.auto_scroll.setCheckable(True)
         self.auto_scroll.toggled.connect(self.on_auto_scroll_changed)
         config_layout.addWidget(self.auto_scroll)
         
         # 查找高亮按钮
-        self.highlight_btn = StyledButton("🔍查找高亮")
+        self.highlight_btn = StyledButton("🔍 高亮配置")
         self.highlight_btn.clicked.connect(self.open_highlight_config)
         config_layout.addWidget(self.highlight_btn)
         
-        # 清空按钮（合并了清空显示和清空缓存）
-        self.clear_btn = StyledButton("🗑️清空")
+        # 清空按钮
+        self.clear_btn = StyledButton("🗑️ 清空数据")
         config_layout.addWidget(self.clear_btn)
-        # 统计信息栏
-        stats_layout = QVBoxLayout()
-        self.stats_label = QLabel("📨 接收: 0 字节 | 📤 发送: 0 字节")
-        self.stats_label.setStyleSheet(f"color: {VSCodeTheme.GREEN}; font-weight: bold;")
-        stats_layout.addWidget(self.stats_label)
         
-        # 缓存信息
-        self.cache_label = QLabel("💾 缓存: 0 包, 0 字节")
-        self.cache_label.setStyleSheet(f"color: {VSCodeTheme.BLUE}; font-weight: bold;")
-        stats_layout.addWidget(self.cache_label)
-        
-        stats_layout.addStretch()
+        # 添加分隔线
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.HLine)
+        separator2.setFrameShadow(QFrame.Sunken)
+        separator2.setStyleSheet(f"color: {VSCodeTheme.BACKGROUND_LIGHTER};")
+        config_layout.addWidget(separator2)
         
         # 显示模式选择
+        mode_label = QLabel("显示模式:")
+        mode_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 5px;")
+        config_layout.addWidget(mode_label)
+        
         mode_layout = QVBoxLayout()
+        mode_layout.setSpacing(5)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.display_normal = StyledCheckBox("📄普通模式")
+        self.display_normal = StyledCheckBox("📄 普通模式")
         self.display_normal.toggled.connect(lambda checked: self.on_display_mode_changed("normal"))
         mode_layout.addWidget(self.display_normal)
         
-        self.display_hex = StyledCheckBox("🔢十六进制模式")
+        self.display_hex = StyledCheckBox("🔢 十六进制模式")
         self.display_hex.toggled.connect(lambda checked: self.on_display_mode_changed("hex"))
         mode_layout.addWidget(self.display_hex)
         
-        mode_layout.addStretch()
         config_layout.addLayout(mode_layout)
+        
+        # 添加分隔线
+        separator3 = QFrame()
+        separator3.setFrameShape(QFrame.HLine)
+        separator3.setFrameShadow(QFrame.Sunken)
+        separator3.setStyleSheet(f"color: {VSCodeTheme.BACKGROUND_LIGHTER};")
+        config_layout.addWidget(separator3)
+        
+        # 统计信息栏
+        stats_label = QLabel("统计信息:")
+        stats_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 5px;")
+        config_layout.addWidget(stats_label)
+        
+        stats_layout = QVBoxLayout()
+        stats_layout.setSpacing(5)
+        stats_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.stats_label = QLabel("📨 接收: 0 字节\n📤 发送: 0 字节")
+        self.stats_label.setStyleSheet(f"""
+            color: {VSCodeTheme.GREEN}; 
+            font-weight: normal; 
+            background-color: {VSCodeTheme.BACKGROUND_LIGHT};
+            padding: 8px;
+            border-radius: 3px;
+        """)
+        stats_layout.addWidget(self.stats_label)
+        
+        # 缓存信息
+        self.cache_label = QLabel("💾 缓存: 0 包\n📦 大小: 0 字节")
+        self.cache_label.setStyleSheet(f"""
+            color: {VSCodeTheme.BLUE}; 
+            font-weight: normal; 
+            background-color: {VSCodeTheme.BACKGROUND_LIGHT};
+            padding: 8px;
+            border-radius: 3px;
+        """)
+        stats_layout.addWidget(self.cache_label)
+        
         config_layout.addLayout(stats_layout)
-
+        config_layout.addStretch()
 
         config_group.setLayout(config_layout)
         layout.addWidget(config_group)
@@ -327,30 +403,41 @@ class MainWindow(QMainWindow):
     
     def create_send_section(self, layout):
         """创建数据发送区域"""
-        send_group = StyledGroupBox("📤发送数据")
-        send_group.setFixedWidth(250)  # 设置固定宽度
+        send_group = StyledGroupBox("📤 发送数据")
+        send_group.setFixedWidth(280)  # 统一宽度
         
         send_layout = QVBoxLayout()
+        send_layout.setSpacing(10)
+        send_layout.setContentsMargins(12, 15, 12, 12)
         
         # 发送输入区域
-        input_layout = QVBoxLayout()
+        input_label = QLabel("发送内容:")
+        input_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal;")
+        send_layout.addWidget(input_label)
+        
         self.send_input = StyledLineEdit()
         self.send_input.setPlaceholderText("输入要发送的数据... (回车发送)")
-        input_layout.addWidget(self.send_input)
+        send_layout.addWidget(self.send_input)
         
-        self.send_btn = StyledButton("🚀发送")
-        input_layout.addWidget(self.send_btn)
-        send_layout.addLayout(input_layout)
+        # 按钮和选项区域
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(8)
+        
+        self.send_btn = StyledButton("🚀 发送")
+        button_layout.addWidget(self.send_btn)
+        
+        send_layout.addLayout(button_layout)
         
         # 选项区域
-        option_layout = QHBoxLayout()
+        option_label = QLabel("发送选项:")
+        option_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal; margin-top: 5px;")
+        send_layout.addWidget(option_label)
         
-        self.hex_send = StyledCheckBox("🔢十六进制发送")
-        option_layout.addWidget(self.hex_send)
+        self.hex_send = StyledCheckBox("🔢 十六进制发送")
+        send_layout.addWidget(self.hex_send)
         
-        option_layout.addStretch()
+        send_layout.addStretch()
         
-        send_layout.addLayout(option_layout)
         send_group.setLayout(send_layout)
         layout.addWidget(send_group)
     
@@ -372,8 +459,8 @@ class MainWindow(QMainWindow):
         # 波特率组合框信号连接
         self.baud_combo.custom_baudrate_selected.connect(self.on_baudrate_changed)
         
-        # 数据缓存信号连接
-        self.data_cache.cache_updated.connect(self.on_cache_updated)
+        # 注意：不再使用 data_cache 的 cache_updated 信号
+        # 缓存信息直接从 normal_display._raw_bytes 获取，避免重复存储
         
         # 串口管理器信号连接
         self.serial_manager.data_received.connect(self.on_data_received)
@@ -505,14 +592,14 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"❌ 保存配置失败: {str(e)}")
             QMessageBox.critical(self, "保存配置失败", str(e))
     
-    def on_cache_updated(self):
-        """缓存更新时的处理"""
-        self.update_cache_info()
+    # 注意：on_cache_updated 方法已移除，改为在 on_data_received 中直接更新
     
     def update_cache_info(self):
-        """更新缓存信息显示"""
-        packet_count, total_bytes = self.data_cache.get_cache_info()
-        self.cache_label.setText(f"💾 缓存: {packet_count} 包, {total_bytes} 字节")
+        """更新缓存信息显示（直接从显示组件获取，避免重复存储）"""
+        # 直接从 normal_display 获取总字节数，避免重复存储
+        total_bytes = self.normal_display.get_raw_bytes_size()
+        packet_count = self.packet_count
+        self.cache_label.setText(f"💾 缓存: {packet_count} 包\n📦 大小: {total_bytes} 字节")
     
     def on_display_mode_changed(self, mode: str):
         """显示模式改变时的处理"""
@@ -737,7 +824,10 @@ class MainWindow(QMainWindow):
     def on_data_received(self, data):
         """处理接收到的数据"""
         self.received_count += len(data)
+        self.packet_count += 1  # 增加包计数
         self.update_stats()
+        self.update_cache_info()  # 更新缓存信息
+        
         self.normal_display.append_raw_bytes(data)
         
         # 向所有日志窗口发送数据
@@ -770,7 +860,7 @@ class MainWindow(QMainWindow):
     
     def update_stats(self):
         """更新统计信息"""
-        self.stats_label.setText(f"📨 接收: {self.received_count} 字节 | 📤 发送: {self.sent_count} 字节")
+        self.stats_label.setText(f"📨 接收: {self.received_count} 字节\n📤 发送: {self.sent_count} 字节")
     
     def clear_display(self):
         """清空显示区域（但不清空缓存）"""
@@ -778,10 +868,10 @@ class MainWindow(QMainWindow):
     
     def clear_cache(self):
         """清空数据缓存"""
-        self.data_cache.clear()
         self.clear_display()
         self.received_count = 0
         self.sent_count = 0
+        self.packet_count = 0  # 重置包计数
         self.update_stats()
         self.update_cache_info()
         self.status_label.setText("🗑️ 缓存已清空")
