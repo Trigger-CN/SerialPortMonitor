@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
         
         # 操作布局
         option_layout = QVBoxLayout()
-        option_layout.setSpacing(12)  # 增加间距，使布局更舒适
+        option_layout.setSpacing(6)  # 减少间距，使布局更紧凑
         option_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距，让GroupBox自己控制
         layout.addLayout(option_layout)
         
@@ -108,8 +108,8 @@ class MainWindow(QMainWindow):
         prefs_group.setFixedWidth(280)  # 统一宽度
         
         prefs_layout = QVBoxLayout()
-        prefs_layout.setSpacing(10)
-        prefs_layout.setContentsMargins(12, 15, 12, 12)
+        prefs_layout.setSpacing(6)
+        prefs_layout.setContentsMargins(10, 10, 10, 10)
         
         self.prefs_btn = StyledButton("🔧 首选项设置")
         self.prefs_btn.clicked.connect(self.show_preference_window)
@@ -194,8 +194,8 @@ class MainWindow(QMainWindow):
         log_path_group.setFixedWidth(280)  # 统一宽度
         
         log_path_layout = QVBoxLayout()
-        log_path_layout.setSpacing(8)
-        log_path_layout.setContentsMargins(12, 15, 12, 12)
+        log_path_layout.setSpacing(5)
+        log_path_layout.setContentsMargins(10, 10, 10, 10)
         
         path_label = QLabel("保存路径:")
         path_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal;")
@@ -224,8 +224,8 @@ class MainWindow(QMainWindow):
         config_group.setFixedWidth(280)  # 统一宽度
         
         config_layout = QVBoxLayout()
-        config_layout.setSpacing(10)
-        config_layout.setContentsMargins(12, 15, 12, 12)
+        config_layout.setSpacing(6)
+        config_layout.setContentsMargins(10, 10, 10, 10)
         
         # 串口选择
         com_label = QLabel("串口:")
@@ -264,7 +264,7 @@ class MainWindow(QMainWindow):
         
         # 显示配置区域
         display_label = QLabel("显示选项:")
-        display_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 5px;")
+        display_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 2px;")
         config_layout.addWidget(display_label)
         
         # 时间戳显示
@@ -297,7 +297,7 @@ class MainWindow(QMainWindow):
         
         # 显示模式选择
         mode_label = QLabel("显示模式:")
-        mode_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 5px;")
+        mode_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 2px;")
         config_layout.addWidget(mode_label)
         
         mode_layout = QVBoxLayout()
@@ -323,7 +323,7 @@ class MainWindow(QMainWindow):
         
         # 统计信息栏
         stats_label = QLabel("统计信息:")
-        stats_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 5px;")
+        stats_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: bold; margin-top: 2px;")
         config_layout.addWidget(stats_label)
         
         stats_layout = QVBoxLayout()
@@ -335,7 +335,7 @@ class MainWindow(QMainWindow):
             color: {VSCodeTheme.GREEN}; 
             font-weight: normal; 
             background-color: {VSCodeTheme.BACKGROUND_LIGHT};
-            padding: 8px;
+            padding: 5px;
             border-radius: 3px;
         """)
         stats_layout.addWidget(self.stats_label)
@@ -346,7 +346,7 @@ class MainWindow(QMainWindow):
             color: {VSCodeTheme.BLUE}; 
             font-weight: normal; 
             background-color: {VSCodeTheme.BACKGROUND_LIGHT};
-            padding: 8px;
+            padding: 5px;
             border-radius: 3px;
         """)
         stats_layout.addWidget(self.cache_label)
@@ -411,8 +411,8 @@ class MainWindow(QMainWindow):
         send_group.setFixedWidth(280)  # 统一宽度
         
         send_layout = QVBoxLayout()
-        send_layout.setSpacing(10)
-        send_layout.setContentsMargins(12, 15, 12, 12)
+        send_layout.setSpacing(6)
+        send_layout.setContentsMargins(10, 10, 10, 10)
         
         # 发送输入区域
         input_label = QLabel("发送内容:")
@@ -434,7 +434,7 @@ class MainWindow(QMainWindow):
         
         # 选项区域
         option_label = QLabel("发送选项:")
-        option_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal; margin-top: 5px;")
+        option_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal; margin-top: 2px;")
         send_layout.addWidget(option_label)
         
         self.hex_send = StyledCheckBox("🔢 十六进制发送")

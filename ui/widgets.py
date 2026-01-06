@@ -187,7 +187,7 @@ class StyledButton(QPushButton):
                 color: white;
                 border: none;
                 border-radius: 3px;
-                padding: 8px 16px;
+                padding: 6px 12px;
                 font-weight: bold;
                 min-width: 80px;
             }}
@@ -202,7 +202,7 @@ class StyledButton(QPushButton):
                 color: white;
                 border: none;
                 border-radius: 3px;
-                padding: 8px 16px;
+                padding: 6px 12px;
                 font-weight: bold;
                 min-width: 80px;
             }}
@@ -254,8 +254,8 @@ class StyledTextEdit(QPlainTextEdit):
             }}
         """)
         # 设置最小高度，使其看起来更合适
-        self.setMinimumHeight(80)
-        self.setMaximumHeight(200)
+        self.setMinimumHeight(60)
+        self.setMaximumHeight(150)
         # 设置换行模式
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         self.setWordWrapMode(QTextOption.WrapAnywhere)
