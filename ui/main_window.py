@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
                              QStackedWidget, QMessageBox, QDialog)
 from PyQt5.QtCore import QTimer
 from ui.widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton, 
-                       StyledLineEdit, StyledCheckBox, 
+                       StyledLineEdit, StyledCheckBox, StyledTextEdit,
                        StyledGroupBox)
 from ui.long_text_widget import HugeTextWidget, ViewMode
 from core.serial_manager import SerialManager
@@ -91,6 +91,10 @@ class MainWindow(QMainWindow):
         # 初始化定时器用于读取串口数据
         self.receive_timer = QTimer()
         self.receive_timer.timeout.connect(self.read_serial_data)
+        
+        # 初始化定时发送定时器
+        self.auto_send_timer = QTimer()
+        self.auto_send_timer.timeout.connect(self.send_data)
         # 初始化显示模式
         self.display_mode = "normal"  # 默认设置为普通模式
         self.display_normal.setChecked(True)
@@ -415,8 +419,8 @@ class MainWindow(QMainWindow):
         input_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal;")
         send_layout.addWidget(input_label)
         
-        self.send_input = StyledLineEdit()
-        self.send_input.setPlaceholderText("输入要发送的数据... (回车发送)")
+        self.send_input = StyledTextEdit()
+        self.send_input.setPlaceholderText("输入要发送的数据... (Enter发送, Shift+Enter换行)")
         send_layout.addWidget(self.send_input)
         
         # 按钮和选项区域
@@ -434,7 +438,34 @@ class MainWindow(QMainWindow):
         send_layout.addWidget(option_label)
         
         self.hex_send = StyledCheckBox("🔢 十六进制发送")
+        self.hex_send.toggled.connect(self.on_hex_send_changed)
         send_layout.addWidget(self.hex_send)
+        
+        self.auto_newline = StyledCheckBox("↵ 自动添加换行")
+        self.auto_newline.setChecked(True)  # 默认启用自动换行
+        send_layout.addWidget(self.auto_newline)
+        
+        # 自动发送选项
+        auto_send_layout = QHBoxLayout()
+        auto_send_layout.setSpacing(8)
+        
+        self.auto_send_checkbox = StyledCheckBox("⏱️ 自动发送")
+        self.auto_send_checkbox.toggled.connect(self.on_auto_send_changed)
+        auto_send_layout.addWidget(self.auto_send_checkbox)
+        
+        interval_label = QLabel("间隔(ms):")
+        interval_label.setStyleSheet(f"color: {VSCodeTheme.FOREGROUND}; font-weight: normal;")
+        auto_send_layout.addWidget(interval_label)
+        
+        self.auto_send_interval = StyledLineEdit()
+        self.auto_send_interval.setText("1000")  # 默认1秒
+        self.auto_send_interval.setFixedWidth(80)
+        self.auto_send_interval.setPlaceholderText("1000")
+        self.auto_send_interval.textChanged.connect(self.on_auto_send_interval_changed)
+        auto_send_layout.addWidget(self.auto_send_interval)
+        
+        auto_send_layout.addStretch()
+        send_layout.addLayout(auto_send_layout)
         
         send_layout.addStretch()
         
@@ -453,7 +484,7 @@ class MainWindow(QMainWindow):
         self.refresh_btn.clicked.connect(self.refresh_ports)
         self.connect_btn.clicked.connect(self.toggle_serial)
         self.send_btn.clicked.connect(self.send_data)
-        self.send_input.returnPressed.connect(self.send_data)
+        self.send_input.send_requested.connect(self.send_data)
         self.clear_btn.clicked.connect(self.clear_cache)
         
         # 波特率组合框信号连接
@@ -838,21 +869,22 @@ class MainWindow(QMainWindow):
 
     def send_data(self):
         """发送数据"""
-        text = self.send_input.text()
-        if not text:
+        text = self.send_input.toPlainText()
+        if not text.strip():
             return
         
         try:
             data = self.data_processor.process_send_data(
                 text, 
-                self.hex_send.isChecked()
+                self.hex_send.isChecked(),
+                self.auto_newline.isChecked()
             )
             
             sent_len = self.serial_manager.send_data(data)
             if sent_len > 0:
                 self.sent_count += sent_len
                 self.update_stats()
-                self.send_input.clear()
+                # 不再自动清除文本框，允许重复发送
         
         except ValueError as e:
             self.status_label.setText(f"❌ 数据格式错误: {str(e)}")
@@ -893,7 +925,61 @@ class MainWindow(QMainWindow):
             self.refresh_btn.setEnabled(True)
             self.port_combo.setEnabled(True)
             self.baud_combo.setEnabled(True)
+            # 断开连接时停止自动发送
+            self.auto_send_timer.stop()
+            self.auto_send_checkbox.setChecked(False)
             self.status_label.setText("🔌 已断开连接")
+    
+    def on_auto_send_changed(self, enabled):
+        """自动发送状态改变时的处理"""
+        if enabled:
+            # 检查串口是否连接
+            if not self.serial_manager.get_connection_status():
+                self.auto_send_checkbox.setChecked(False)
+                QMessageBox.warning(self, "提示", "请先连接串口后再启用自动发送")
+                return
+            
+            # 获取发送间隔
+            interval_text = self.auto_send_interval.text().strip()
+            try:
+                interval = int(interval_text)
+                if interval < 10:
+                    QMessageBox.warning(self, "提示", "发送间隔不能小于10ms")
+                    self.auto_send_checkbox.setChecked(False)
+                    return
+                self.auto_send_timer.setInterval(interval)
+                self.auto_send_timer.start()
+                self.status_label.setText(f"⏱️ 自动发送已启用，间隔: {interval}ms")
+            except ValueError:
+                QMessageBox.warning(self, "提示", "请输入有效的数字")
+                self.auto_send_checkbox.setChecked(False)
+        else:
+            self.auto_send_timer.stop()
+            self.status_label.setText("⏱️ 自动发送已禁用")
+    
+    def on_auto_send_interval_changed(self, text):
+        """自动发送间隔改变时的处理"""
+        if self.auto_send_checkbox.isChecked():
+            # 如果自动发送已启用，重新设置间隔
+            try:
+                interval = int(text.strip())
+                if interval >= 10:
+                    self.auto_send_timer.setInterval(interval)
+                    if self.auto_send_timer.isActive():
+                        self.auto_send_timer.stop()
+                        self.auto_send_timer.start()
+            except ValueError:
+                pass
+    
+    def on_hex_send_changed(self, checked):
+        """十六进制发送模式改变时的处理"""
+        # 十六进制模式下，自动换行选项应该禁用（因为十六进制数据不应该自动添加换行）
+        if checked:
+            self.auto_newline.setEnabled(False)
+            self.auto_newline.setToolTip("十六进制模式下不支持自动换行")
+        else:
+            self.auto_newline.setEnabled(True)
+            self.auto_newline.setToolTip("")
     
     def create_log_window(self):
         """创建新的日志窗口"""

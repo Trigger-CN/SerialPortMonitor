@@ -1,6 +1,6 @@
 from .main_window import MainWindow
 from .widgets import (StyledComboBox, CustomBaudrateComboBox, StyledButton,
-                     StyledLineEdit, StyledCheckBox, StyledGroupBox)
+                     StyledLineEdit, StyledCheckBox, StyledTextEdit, StyledGroupBox)
 
 __all__ = [
     'MainWindow',
@@ -8,6 +8,7 @@ __all__ = [
     'CustomBaudrateComboBox',
     'StyledButton', 
     'StyledLineEdit', 
-    'StyledCheckBox', 
+    'StyledCheckBox',
+    'StyledTextEdit',
     'StyledGroupBox'
 ]

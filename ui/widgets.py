@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QComboBox, QPushButton, 
-                             QLineEdit, QCheckBox, QGroupBox)
-from PyQt5.QtGui import QFont
-from PyQt5.QtCore import pyqtSignal
+                             QLineEdit, QCheckBox, QGroupBox, QPlainTextEdit)
+from PyQt5.QtGui import QFont, QKeyEvent, QTextOption
+from PyQt5.QtCore import pyqtSignal, Qt
 from styles.vs_code_theme import VSCodeTheme
 
 class StyledComboBox(QComboBox):
@@ -231,6 +231,48 @@ class StyledLineEdit(QLineEdit):
                 border: 1px solid {VSCodeTheme.ACCENT};
             }}
         """)
+
+class StyledTextEdit(QPlainTextEdit):
+    """样式化的多行文本框，支持手动换行"""
+    # 定义发送信号
+    send_requested = pyqtSignal()
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFont(QFont(VSCodeTheme.FONT_FAMILY, 10))
+        self.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {VSCodeTheme.BACKGROUND_LIGHT};
+                color: {VSCodeTheme.FOREGROUND};
+                border: 1px solid {VSCodeTheme.BACKGROUND_LIGHTER};
+                border-radius: 3px;
+                padding: 8px;
+                selection-background-color: {VSCodeTheme.ACCENT};
+            }}
+            QPlainTextEdit:focus {{
+                border: 1px solid {VSCodeTheme.ACCENT};
+            }}
+        """)
+        # 设置最小高度，使其看起来更合适
+        self.setMinimumHeight(80)
+        self.setMaximumHeight(200)
+        # 设置换行模式
+        self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.setWordWrapMode(QTextOption.WrapAnywhere)
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """处理按键事件：Enter 发送，Shift+Enter 换行"""
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            if event.modifiers() & Qt.ShiftModifier:
+                # Shift+Enter: 换行
+                super().keyPressEvent(event)
+                return
+            else:
+                # Enter: 发送
+                self.send_requested.emit()
+                return
+        # 其他按键使用默认行为
+        super().keyPressEvent(event)
 
 class StyledCheckBox(QCheckBox):
     def __init__(self, text, parent=None):

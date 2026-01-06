@@ -60,12 +60,18 @@ class DataProcessor:
         return processed
     
     @staticmethod
-    def process_send_data(text: str, hex_send: bool = False) -> bytes:
-        """处理要发送的数据"""
+    def process_send_data(text: str, hex_send: bool = False, add_newline: bool = True) -> bytes:
+        """处理要发送的数据
+        
+        Args:
+            text: 要发送的文本
+            hex_send: 是否以十六进制格式发送
+            add_newline: 是否在文本末尾自动添加换行符（仅文本模式有效）
+        """
         if hex_send:
             return DataProcessor.hex_to_bytes(text)
         else:
-            return DataProcessor.text_to_bytes(text, add_newline=True)
+            return DataProcessor.text_to_bytes(text, add_newline=add_newline)
     
     @staticmethod
     def split_data_for_comparison(data: bytes, bytes_per_line: int = 16) -> Tuple[List[str], List[str]]:
